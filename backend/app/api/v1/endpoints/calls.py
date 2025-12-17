@@ -142,30 +142,54 @@ async def trigger_transcription(
 ):
     """
     Manually trigger transcription for a call
+
+    Requirements:
+    - Call must exist
+    - Transcription must not already be completed
     """
     call_repo = CallRepository(db)
     db_call = call_repo.get_by_id(call_id)
 
+    # Validate call exists
     if not db_call:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Call not found"
         )
 
-    # TODO: Trigger actual transcription service
-    transcription_service = TranscriptionService()
-    result = await transcription_service.transcribe_audio(Path(db_call.audio_path))
+    # Prevent re-transcription if already completed
+    if db_call.transcription_status == "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Transcription already completed for this call"
+        )
 
-    # Update call with transcription
-    call_repo.update(call_id, {
-        "transcription_text": result.get("text"),
-        "transcription_status": result.get("status", "pending")
-    })
+    try:
+        # TODO: Trigger actual transcription service
+        transcription_service = TranscriptionService()
+        result = await transcription_service.transcribe_audio(Path(db_call.audio_path))
 
-    return {
-        "text": result.get("text"),
-        "status": result.get("status", "pending")
-    }
+        # Persist transcription to database
+        call_repo.update(call_id, {
+            "transcription_text": result.get("text"),
+            "transcription_status": result.get("status", "pending")
+        })
+
+        return {
+            "text": result.get("text"),
+            "status": result.get("status", "pending")
+        }
+
+    except Exception as e:
+        # Handle transcription failure
+        call_repo.update(call_id, {
+            "transcription_status": "failed"
+        })
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Transcription failed: {str(e)}"
+        )
 
 
 @router.post("/{call_id}/evaluate", response_model=EvaluationResponse)
@@ -175,44 +199,78 @@ async def trigger_evaluation(
 ):
     """
     Manually trigger RASNA evaluation for a call
+
+    Requirements:
+    - Call must exist
+    - Transcription must be completed
+    - Evaluation must not already be completed
     """
     call_repo = CallRepository(db)
     db_call = call_repo.get_by_id(call_id)
 
+    # Validate call exists
     if not db_call:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Call not found"
         )
 
-    # TODO: Replace mock evaluation with actual LLM-based evaluation
-    evaluation_service = EvaluationService()
-    result = await evaluation_service.evaluate_call(
-        db_call.transcription_text,
-        {
-            "agent_name": db_call.agent_name,
-            "customer_name": db_call.customer_name,
-            "call_type": db_call.call_type,
-            "lead_type": db_call.lead_type,
-            "call_stage": db_call.call_stage,
-            "deck_shared": db_call.deck_shared
+    # Validate transcription is completed
+    if db_call.transcription_status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Transcription must be completed before evaluation. Current status: {db_call.transcription_status}"
+        )
+
+    # Prevent re-evaluation if already completed
+    if db_call.evaluation_status == "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Evaluation already completed for this call"
+        )
+
+    try:
+        # TODO: Replace mock evaluation with actual LLM-based evaluation
+        evaluation_service = EvaluationService()
+        result = await evaluation_service.evaluate_call(
+            db_call.transcription_text,
+            {
+                "agent_name": db_call.agent_name,
+                "customer_name": db_call.customer_name,
+                "call_type": db_call.call_type,
+                "lead_type": db_call.lead_type,
+                "call_stage": db_call.call_stage,
+                "deck_shared": db_call.deck_shared
+            }
+        )
+
+        # Extract evaluation result
+        evaluation_result = result.get("result")
+        evaluation_status = result.get("status", "completed")
+        overall_score = evaluation_result.get("scores", {}).get("overall") if evaluation_result else None
+
+        # Persist evaluation to database
+        call_repo.update(call_id, {
+            "evaluation_score": overall_score,
+            "evaluation_details": evaluation_result,
+            "evaluation_status": evaluation_status
+        })
+
+        return {
+            "result": evaluation_result,
+            "status": evaluation_status
         }
-    )
 
-    # Update call with evaluation
-    evaluation_result = result.get("result")
-    overall_score = evaluation_result.get("scores", {}).get("overall") if evaluation_result else None
+    except Exception as e:
+        # Handle evaluation failure
+        call_repo.update(call_id, {
+            "evaluation_status": "failed"
+        })
 
-    call_repo.update(call_id, {
-        "evaluation_score": overall_score,
-        "evaluation_details": evaluation_result,
-        "evaluation_status": result.get("status", "pending")
-    })
-
-    return {
-        "result": evaluation_result,
-        "status": result.get("status", "pending")
-    }
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Evaluation failed: {str(e)}"
+        )
 
 
 @router.delete("/{call_id}", status_code=status.HTTP_204_NO_CONTENT)
