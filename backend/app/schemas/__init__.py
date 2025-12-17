@@ -3,7 +3,9 @@ from app.schemas.call import (
     CallResponse,
     CallListResponse,
     TranscriptionResponse,
-    EvaluationResponse
+    EvaluationResponse,
+    RasnaScore,
+    EvaluationResult
 )
 
 __all__ = [
@@ -11,5 +13,7 @@ __all__ = [
     "CallResponse",
     "CallListResponse",
     "TranscriptionResponse",
-    "EvaluationResponse"
+    "EvaluationResponse",
+    "RasnaScore",
+    "EvaluationResult"
 ]

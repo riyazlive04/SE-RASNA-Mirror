@@ -24,11 +24,27 @@ async def upload_call(
     agent_name: str = Form(...),
     customer_name: str = Form(None),
     call_type: str = Form(...),
+    lead_type: str = Form(...),
+    call_stage: str = Form(...),
+    deck_shared: bool = Form(False),
     db: Session = Depends(get_database)
 ):
     """
     Upload a sales call audio file with context
     """
+    # Validate lead_type
+    if lead_type not in ["hot", "warm", "cold"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid lead_type. Must be: hot, warm, or cold"
+        )
+
+    # Validate call_stage
+    if call_stage not in ["qualification", "main", "follow-up"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid call_stage. Must be: qualification, main, or follow-up"
+        )
     # Validate file format
     file_extension = Path(audio_file.filename).suffix.lower()
     if file_extension not in settings.ALLOWED_AUDIO_FORMATS:
@@ -61,6 +77,9 @@ async def upload_call(
         "agent_name": agent_name,
         "customer_name": customer_name,
         "call_type": call_type,
+        "lead_type": lead_type,
+        "call_stage": call_stage,
+        "deck_shared": deck_shared,
         "audio_filename": filename,
         "audio_path": file_path,
         "audio_format": file_extension,
@@ -166,27 +185,32 @@ async def trigger_evaluation(
             detail="Call not found"
         )
 
-    # TODO: Trigger actual evaluation service
+    # TODO: Replace mock evaluation with actual LLM-based evaluation
     evaluation_service = EvaluationService()
     result = await evaluation_service.evaluate_call(
         db_call.transcription_text,
         {
             "agent_name": db_call.agent_name,
             "customer_name": db_call.customer_name,
-            "call_type": db_call.call_type
+            "call_type": db_call.call_type,
+            "lead_type": db_call.lead_type,
+            "call_stage": db_call.call_stage,
+            "deck_shared": db_call.deck_shared
         }
     )
 
     # Update call with evaluation
+    evaluation_result = result.get("result")
+    overall_score = evaluation_result.get("scores", {}).get("overall") if evaluation_result else None
+
     call_repo.update(call_id, {
-        "evaluation_score": result.get("score"),
-        "evaluation_details": result.get("details"),
+        "evaluation_score": overall_score,
+        "evaluation_details": evaluation_result,
         "evaluation_status": result.get("status", "pending")
     })
 
     return {
-        "score": result.get("score"),
-        "details": result.get("details"),
+        "result": evaluation_result,
         "status": result.get("status", "pending")
     }
 
@@ -226,6 +250,9 @@ def _format_call_response(db_call) -> dict:
         "customer_name": db_call.customer_name,
         "call_type": db_call.call_type,
         "call_date": db_call.call_date,
+        "lead_type": db_call.lead_type,
+        "call_stage": db_call.call_stage,
+        "deck_shared": db_call.deck_shared,
         "audio_filename": db_call.audio_filename,
         "audio_format": db_call.audio_format,
         "audio_size": db_call.audio_size,
@@ -234,8 +261,7 @@ def _format_call_response(db_call) -> dict:
             "status": db_call.transcription_status
         },
         "evaluation": {
-            "score": db_call.evaluation_score,
-            "details": db_call.evaluation_details,
+            "result": db_call.evaluation_details,
             "status": db_call.evaluation_status
         },
         "created_at": db_call.created_at,

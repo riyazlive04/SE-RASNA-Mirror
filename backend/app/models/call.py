@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, JSON, Boolean
 from datetime import datetime
 
 from app.core.database import Base
@@ -14,6 +14,11 @@ class Call(Base):
     customer_name = Column(String, nullable=True)
     call_type = Column(String, nullable=False)
     call_date = Column(DateTime, default=datetime.utcnow)
+
+    # RASNA evaluation context
+    lead_type = Column(String, nullable=False)  # hot | warm | cold
+    call_stage = Column(String, nullable=False)  # qualification | main | follow-up
+    deck_shared = Column(Boolean, default=False)
 
     # Audio file info
     audio_filename = Column(String, nullable=False, unique=True)
