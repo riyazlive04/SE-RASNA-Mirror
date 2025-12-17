@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.db
+storage/audio/*
+!storage/audio/.gitkeep
+.env
+.vscode/
+.idea/
+*.log
