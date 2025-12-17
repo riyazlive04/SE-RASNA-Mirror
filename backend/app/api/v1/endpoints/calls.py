@@ -276,27 +276,53 @@ async def trigger_transcription(
         )
 
     try:
-        # TODO: Trigger actual transcription service
+        # TODO: Phase 4 - Replace mock with actual STT provider (Whisper/AssemblyAI/Google)
         transcription_service = TranscriptionService()
         result = await transcription_service.transcribe_audio(Path(db_call.audio_path))
 
+        # Validate transcription result
+        transcription_text = result.get("text")
+        transcription_status = result.get("status")
+
+        if not transcription_text or not transcription_status:
+            raise ValueError("Invalid transcription result: missing text or status")
+
         # Persist transcription to database
         call_repo.update(call_id, {
-            "transcription_text": result.get("text"),
-            "transcription_status": result.get("status", "pending")
+            "transcription_text": transcription_text,
+            "transcription_status": transcription_status
         })
 
         return {
-            "text": result.get("text"),
-            "status": result.get("status", "pending")
+            "text": transcription_text,
+            "status": transcription_status
         }
 
-    except Exception as e:
-        # Handle transcription failure
+    except FileNotFoundError as e:
+        # Audio file not found - mark as failed
         call_repo.update(call_id, {
             "transcription_status": "failed"
         })
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audio file not found: {str(e)}"
+        )
 
+    except ValueError as e:
+        # Invalid audio file or transcription result - mark as failed
+        call_repo.update(call_id, {
+            "transcription_status": "failed"
+        })
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid audio file: {str(e)}"
+        )
+
+    except Exception as e:
+        # Unexpected error - mark as failed
+        call_repo.update(call_id, {
+            "transcription_status": "failed"
+        })
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Transcription failed: {str(e)}"
