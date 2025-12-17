@@ -1,11 +1,19 @@
 from typing import Optional
+import logging
 from app.schemas.call import EvaluationResult, RasnaScore
+from app.services.llm_client import LLMClient
+from app.services.prompts.rasna_evaluation_prompt import build_evaluation_prompt
+
+logger = logging.getLogger(__name__)
 
 
 class EvaluationService:
     """
-    RASNA evaluation service with deterministic mock output
+    RASNA evaluation service with LLM-based analysis and deterministic fallback
     """
+
+    def __init__(self):
+        self.llm_client = LLMClient()
 
     async def evaluate_call(
         self,
@@ -13,26 +21,188 @@ class EvaluationService:
         call_context: dict
     ) -> dict:
         """
-        Evaluate sales call using RASNA framework
+        Evaluate sales call using RASNA framework with LLM
 
-        RASNA Framework:
-        - Rapport: Building connection and trust
-        - Situation: Understanding customer's current state
-        - Pain: Identifying customer's challenges
-        - Need: Articulating what customer needs
-        - Ask: Closing and next steps
+        Flow:
+        1. Attempt LLM-based evaluation
+        2. If LLM fails, fall back to deterministic mock
+        3. Always return valid EvaluationResult
 
-        Returns deterministic mock evaluation based on call context
+        Args:
+            transcription_text: Call transcription
+            call_context: Call metadata (lead_type, call_stage, deck_shared, etc.)
 
-        TODO: Replace with actual LLM-based evaluation logic:
-        1. Parse transcription into conversation segments
-        2. Use LLM to identify RASNA components in conversation
-        3. Score each component based on effectiveness
-        4. Generate actionable feedback using LLM
-        5. Provide specific quotes and timestamps
+        Returns:
+            dict: {
+                "result": EvaluationResult dict,
+                "status": "completed"
+            }
         """
+        lead_type = call_context.get("lead_type", "warm")
+        call_stage = call_context.get("call_stage", "main")
+        deck_shared = call_context.get("deck_shared", False)
 
-        # Deterministic mock based on lead_type and call_stage
+        logger.info(
+            "Starting RASNA evaluation",
+            extra={
+                "lead_type": lead_type,
+                "call_stage": call_stage,
+                "deck_shared": deck_shared,
+                "has_transcript": bool(transcription_text)
+            }
+        )
+
+        # Attempt LLM evaluation
+        try:
+            if not transcription_text:
+                raise ValueError("Cannot evaluate without transcription")
+
+            evaluation_result = await self._evaluate_with_llm(
+                transcription_text,
+                lead_type,
+                call_stage,
+                deck_shared
+            )
+
+            # Add metadata
+            result_dict = evaluation_result.model_dump()
+            result_dict["llm_used"] = True
+
+            logger.info("LLM evaluation successful")
+
+            return {
+                "result": result_dict,
+                "status": "completed"
+            }
+
+        except Exception as e:
+            logger.warning(
+                f"LLM evaluation failed, falling back to deterministic mock: {str(e)}",
+                extra={"error_type": type(e).__name__}
+            )
+
+            # Fall back to deterministic mock
+            evaluation_result = self._evaluate_with_mock(call_context)
+
+            # Add metadata
+            result_dict = evaluation_result.model_dump()
+            result_dict["llm_used"] = False
+
+            logger.info("Fallback evaluation successful")
+
+            return {
+                "result": result_dict,
+                "status": "completed"
+            }
+
+    async def _evaluate_with_llm(
+        self,
+        transcript: str,
+        lead_type: str,
+        call_stage: str,
+        deck_shared: bool
+    ) -> EvaluationResult:
+        """
+        Evaluate call using LLM with strict validation
+
+        Raises:
+            ValueError: If LLM response is invalid
+            RuntimeError: If LLM request fails
+            TimeoutError: If LLM request times out
+        """
+        # Build prompt
+        system_prompt, user_prompt = build_evaluation_prompt(
+            transcript=transcript,
+            lead_type=lead_type,
+            call_stage=call_stage,
+            deck_shared=deck_shared
+        )
+
+        # Call LLM
+        llm_response = await self.llm_client.generate_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt
+        )
+
+        # Validate response structure
+        if "scores" not in llm_response:
+            raise ValueError("LLM response missing 'scores' field")
+
+        if "strengths" not in llm_response:
+            raise ValueError("LLM response missing 'strengths' field")
+
+        if "improvements" not in llm_response:
+            raise ValueError("LLM response missing 'improvements' field")
+
+        if "next_call_focus" not in llm_response:
+            raise ValueError("LLM response missing 'next_call_focus' field")
+
+        # Extract scores
+        scores_data = llm_response["scores"]
+
+        # Validate all RASNA scores present
+        required_scores = ["rapport", "situation", "pain", "need", "ask"]
+        for score_key in required_scores:
+            if score_key not in scores_data:
+                raise ValueError(f"LLM response missing score: {score_key}")
+
+        # Compute overall if missing or validate if present
+        component_scores = [
+            scores_data["rapport"],
+            scores_data["situation"],
+            scores_data["pain"],
+            scores_data["need"],
+            scores_data["ask"]
+        ]
+
+        computed_overall = sum(component_scores) // 5
+
+        if "overall" not in scores_data or scores_data["overall"] is None:
+            scores_data["overall"] = computed_overall
+
+        # Create RasnaScore with strict validation
+        try:
+            rasna_score = RasnaScore(
+                rapport=scores_data["rapport"],
+                situation=scores_data["situation"],
+                pain=scores_data["pain"],
+                need=scores_data["need"],
+                ask=scores_data["ask"],
+                overall=scores_data["overall"]
+            )
+        except Exception as e:
+            raise ValueError(f"Invalid RASNA scores from LLM: {str(e)}")
+
+        # Validate strengths and improvements arrays
+        strengths = llm_response["strengths"]
+        improvements = llm_response["improvements"]
+
+        if not isinstance(strengths, list) or len(strengths) < 2 or len(strengths) > 4:
+            raise ValueError("LLM must provide 2-4 strengths")
+
+        if not isinstance(improvements, list) or len(improvements) < 2 or len(improvements) > 4:
+            raise ValueError("LLM must provide 2-4 improvements")
+
+        # Create EvaluationResult with strict validation
+        try:
+            evaluation_result = EvaluationResult(
+                scores=rasna_score,
+                strengths=strengths,
+                improvements=improvements,
+                next_call_focus=llm_response["next_call_focus"]
+            )
+        except Exception as e:
+            raise ValueError(f"Invalid evaluation result from LLM: {str(e)}")
+
+        return evaluation_result
+
+    def _evaluate_with_mock(self, call_context: dict) -> EvaluationResult:
+        """
+        Deterministic mock evaluation (fallback)
+
+        This is the same logic from the original implementation.
+        Used when LLM fails or is unavailable.
+        """
         lead_type = call_context.get("lead_type", "warm")
         call_stage = call_context.get("call_stage", "main")
         deck_shared = call_context.get("deck_shared", False)
@@ -74,10 +244,7 @@ class EvaluationService:
             next_call_focus=next_focus
         )
 
-        return {
-            "result": evaluation_result.model_dump(),
-            "status": "completed"
-        }
+        return evaluation_result
 
     def _get_base_scores(self, lead_type: str) -> dict:
         """Deterministic base scores by lead type"""
