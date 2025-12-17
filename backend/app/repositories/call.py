@@ -9,11 +9,28 @@ class CallRepository:
         self.db = db
 
     def create(self, call_data: dict) -> Call:
-        db_call = Call(**call_data)
-        self.db.add(db_call)
-        self.db.commit()
-        self.db.refresh(db_call)
-        return db_call
+        """
+        Create a new call record in the database
+
+        Args:
+            call_data: Dictionary containing call fields
+
+        Returns:
+            Call: The created call object with ID populated
+
+        Raises:
+            SQLAlchemyError: If database operation fails
+        """
+        try:
+            db_call = Call(**call_data)
+            self.db.add(db_call)
+            self.db.commit()
+            self.db.refresh(db_call)
+            return db_call
+        except Exception as e:
+            # Rollback transaction on any error
+            self.db.rollback()
+            raise e
 
     def get_by_id(self, call_id: int) -> Optional[Call]:
         return self.db.query(Call).filter(Call.id == call_id).first()

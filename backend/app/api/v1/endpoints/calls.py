@@ -31,69 +31,180 @@ async def upload_call(
 ):
     """
     Upload a sales call audio file with context
+
+    This endpoint handles the complete audio upload and persistence workflow:
+    1. Validates all input parameters
+    2. Validates audio file format and size
+    3. Persists audio file to storage
+    4. Creates database record atomically
+    5. Returns call metadata for client
+
+    Phase 3 Integration Points:
+    - TODO: After successful upload, trigger async transcription job
+    - TODO: After transcription completes, trigger evaluation job
     """
-    # Validate lead_type
+    storage_service = StorageService()
+    call_repo = CallRepository(db)
+    stored_filename = None
+
+    # ============================================
+    # VALIDATION PHASE
+    # ============================================
+
+    # Validate required string fields
+    if not agent_name or not agent_name.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="agent_name is required and cannot be empty"
+        )
+
+    if not call_type or not call_type.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="call_type is required and cannot be empty"
+        )
+
+    # Validate lead_type enum
     if lead_type not in ["hot", "warm", "cold"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid lead_type. Must be: hot, warm, or cold"
         )
 
-    # Validate call_stage
+    # Validate call_stage enum
     if call_stage not in ["qualification", "main", "follow-up"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid call_stage. Must be: qualification, main, or follow-up"
         )
+
+    # Validate audio file is present
+    if not audio_file or not audio_file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Audio file is required"
+        )
+
     # Validate file format
     file_extension = Path(audio_file.filename).suffix.lower()
+    if not file_extension:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Audio file must have a valid extension"
+        )
+
     if file_extension not in settings.ALLOWED_AUDIO_FORMATS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid audio format. Allowed: {settings.ALLOWED_AUDIO_FORMATS}"
+            detail=f"Invalid audio format '{file_extension}'. Allowed formats: {', '.join(settings.ALLOWED_AUDIO_FORMATS)}"
         )
 
-    # Read file content
-    file_content = await audio_file.read()
+    # Read and validate file content
+    try:
+        file_content = await audio_file.read()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read audio file: {str(e)}"
+        )
+
     file_size = len(file_content)
 
-    # Validate file size
-    if file_size > settings.MAX_AUDIO_FILE_SIZE:
+    # Validate file is not empty
+    if file_size == 0:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File too large. Max size: {settings.MAX_AUDIO_FILE_SIZE / 1024 / 1024}MB"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Audio file cannot be empty"
         )
 
-    # Save audio file
-    storage_service = StorageService()
-    filename, file_path = await storage_service.save_audio_file(
-        file_content,
-        audio_file.filename
-    )
+    # Validate file size limit
+    if file_size > settings.MAX_AUDIO_FILE_SIZE:
+        max_size_mb = settings.MAX_AUDIO_FILE_SIZE / 1024 / 1024
+        actual_size_mb = file_size / 1024 / 1024
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large ({actual_size_mb:.2f}MB). Maximum allowed: {max_size_mb:.2f}MB"
+        )
 
-    # Create call record
-    call_repo = CallRepository(db)
-    call_data = {
-        "agent_name": agent_name,
-        "customer_name": customer_name,
-        "call_type": call_type,
-        "lead_type": lead_type,
-        "call_stage": call_stage,
-        "deck_shared": deck_shared,
-        "audio_filename": filename,
-        "audio_path": file_path,
-        "audio_format": file_extension,
-        "audio_size": file_size,
-        "transcription_status": "pending",
-        "evaluation_status": "pending"
-    }
+    # ============================================
+    # PERSISTENCE PHASE (Atomic)
+    # ============================================
 
-    db_call = call_repo.create(call_data)
+    try:
+        # Step 1: Save audio file to storage
+        try:
+            filename, file_path = await storage_service.save_audio_file(
+                file_content,
+                audio_file.filename
+            )
+            stored_filename = filename
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save audio file: {str(e)}"
+            )
 
-    # TODO: Trigger async transcription job
-    # TODO: Trigger async evaluation job after transcription
+        # Step 2: Create database record
+        call_data = {
+            "agent_name": agent_name.strip(),
+            "customer_name": customer_name.strip() if customer_name else None,
+            "call_type": call_type.strip(),
+            "lead_type": lead_type,
+            "call_stage": call_stage,
+            "deck_shared": deck_shared,
+            "audio_filename": filename,
+            "audio_path": file_path,
+            "audio_format": file_extension,
+            "audio_size": file_size,
+            "transcription_status": "pending",
+            "evaluation_status": "pending"
+        }
 
-    return _format_call_response(db_call)
+        try:
+            db_call = call_repo.create(call_data)
+        except Exception as e:
+            # Database insert failed - clean up stored file to maintain atomicity
+            if stored_filename:
+                try:
+                    storage_service.delete_audio_file(stored_filename)
+                except Exception:
+                    # Log this in production, but don't fail the request
+                    pass
+
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create call record: {str(e)}"
+            )
+
+        # ============================================
+        # POST-UPLOAD HOOKS (Phase 3)
+        # ============================================
+
+        # TODO: Phase 3 - Trigger async transcription job
+        # Example:
+        #   transcription_task.delay(call_id=db_call.id, audio_path=file_path)
+
+        # TODO: Phase 3 - After transcription completes, trigger evaluation
+        # This will be handled by transcription completion callback
+
+        # Return successful response
+        return _format_call_response(db_call)
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        # Catch any unexpected errors and clean up
+        if stored_filename:
+            try:
+                storage_service.delete_audio_file(stored_filename)
+            except Exception:
+                pass
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error during upload: {str(e)}"
+        )
 
 
 @router.get("/", response_model=CallListResponse)

@@ -17,22 +17,65 @@ class StorageService:
         original_filename: str
     ) -> tuple[str, str]:
         """
-        Save audio file to local storage
-        Returns: (filename, file_path)
+        Save audio file to local storage with atomic write operation
+
+        Args:
+            file_content: Raw bytes of the audio file
+            original_filename: Original filename from upload (used for extension)
+
+        Returns:
+            tuple[str, str]: (unique_filename, absolute_file_path)
+
+        Raises:
+            ValueError: If file_content is empty or original_filename is invalid
+            OSError: If file write fails
         """
-        # Generate unique filename
+        # Validate inputs
+        if not file_content:
+            raise ValueError("file_content cannot be empty")
+
+        if not original_filename:
+            raise ValueError("original_filename cannot be empty")
+
+        # Generate deterministic unique filename
+        # Format: YYYYMMDD_HHMMSS_<hash>.<ext>
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+        # Use first 1KB for hash to balance uniqueness and performance
         file_hash = hashlib.md5(file_content[:1024]).hexdigest()[:8]
-        extension = Path(original_filename).suffix
+
+        extension = Path(original_filename).suffix.lower()
+        if not extension:
+            raise ValueError("original_filename must have a file extension")
 
         unique_filename = f"{timestamp}_{file_hash}{extension}"
         file_path = self.storage_path / unique_filename
 
-        # Save file asynchronously
-        async with aiofiles.open(file_path, 'wb') as f:
-            await f.write(file_content)
+        # Check if file already exists (collision detection)
+        if file_path.exists():
+            # Add microseconds to ensure uniqueness
+            timestamp_micro = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+            unique_filename = f"{timestamp_micro}_{file_hash}{extension}"
+            file_path = self.storage_path / unique_filename
 
-        return unique_filename, str(file_path)
+        # Write file atomically using temp file + rename pattern
+        temp_path = file_path.with_suffix(f"{extension}.tmp")
+
+        try:
+            # Write to temporary file first
+            async with aiofiles.open(temp_path, 'wb') as f:
+                await f.write(file_content)
+
+            # Atomic rename (on same filesystem)
+            temp_path.rename(file_path)
+
+            return unique_filename, str(file_path.absolute())
+
+        except Exception as e:
+            # Clean up temp file if it exists
+            if temp_path.exists():
+                temp_path.unlink()
+            raise OSError(f"Failed to save audio file: {str(e)}") from e
 
     def delete_audio_file(self, filename: str) -> bool:
         """Delete audio file from storage"""
