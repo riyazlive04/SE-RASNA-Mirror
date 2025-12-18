@@ -59,3 +59,29 @@ export async function evaluateCall(id: string): Promise<void> {
     throw new Error(error.detail || "Failed to evaluate call");
   }
 }
+
+export async function markAsBaseline(id: string): Promise<Call> {
+  const response = await fetch(`${API_BASE_URL}/calls/${id}/baseline`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to mark as baseline");
+  }
+
+  return response.json();
+}
+
+export async function unmarkAsBaseline(id: string): Promise<Call> {
+  const response = await fetch(`${API_BASE_URL}/calls/${id}/baseline`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to unmark as baseline");
+  }
+
+  return response.json();
+}

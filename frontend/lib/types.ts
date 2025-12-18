@@ -43,6 +43,8 @@ export interface Call {
   audio_size: number;
   transcription: TranscriptionResponse;
   evaluation: EvaluationResponse;
+  is_baseline: boolean;
+  baseline_marked_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -410,6 +410,82 @@ async def trigger_evaluation(
         )
 
 
+@router.post("/{call_id}/baseline", response_model=CallResponse)
+async def mark_as_baseline(
+    call_id: int,
+    db: Session = Depends(get_database)
+):
+    """
+    Mark a call as baseline (best call example)
+
+    Purpose: Allows users to mark exceptional calls as "best examples"
+    for future comparison and learning. This helps track performance
+    against ideal call patterns.
+
+    Requirements:
+    - Call must exist
+    - Transcription must be completed
+    - Evaluation must be completed
+
+    Note: Single-user system in this phase - no user isolation yet
+    """
+    call_repo = CallRepository(db)
+    db_call = call_repo.get_by_id(call_id)
+
+    # Validate call exists
+    if not db_call:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Call not found"
+        )
+
+    # Enforce rule: transcription must be completed
+    if db_call.transcription_status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot mark as baseline: transcription must be completed. Current status: {db_call.transcription_status}"
+        )
+
+    # Enforce rule: evaluation must be completed
+    if db_call.evaluation_status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot mark as baseline: evaluation must be completed. Current status: {db_call.evaluation_status}"
+        )
+
+    # Mark as baseline
+    updated_call = call_repo.mark_as_baseline(call_id)
+
+    return _format_call_response(updated_call)
+
+
+@router.delete("/{call_id}/baseline", response_model=CallResponse)
+async def unmark_as_baseline(
+    call_id: int,
+    db: Session = Depends(get_database)
+):
+    """
+    Remove baseline marking from a call
+
+    Purpose: Allows users to unmark a call that was previously
+    marked as a baseline example.
+    """
+    call_repo = CallRepository(db)
+    db_call = call_repo.get_by_id(call_id)
+
+    # Validate call exists
+    if not db_call:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Call not found"
+        )
+
+    # Unmark as baseline
+    updated_call = call_repo.unmark_as_baseline(call_id)
+
+    return _format_call_response(updated_call)
+
+
 @router.delete("/{call_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_call(
     call_id: int,
@@ -459,6 +535,8 @@ def _format_call_response(db_call) -> dict:
             "result": db_call.evaluation_details,
             "status": db_call.evaluation_status
         },
+        "is_baseline": db_call.is_baseline,
+        "baseline_marked_at": db_call.baseline_marked_at,
         "created_at": db_call.created_at,
         "updated_at": db_call.updated_at
     }

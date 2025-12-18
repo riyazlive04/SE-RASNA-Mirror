@@ -64,6 +64,10 @@ class CallResponse(BaseModel):
     transcription: TranscriptionResponse
     evaluation: EvaluationResponse
 
+    # Baseline tracking
+    is_baseline: bool
+    baseline_marked_at: Optional[datetime]
+
     created_at: datetime
     updated_at: datetime
 

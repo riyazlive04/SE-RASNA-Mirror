@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { use } from "react";
-import { getCall, transcribeCall, evaluateCall } from "@/lib/api";
+import { getCall, transcribeCall, evaluateCall, markAsBaseline, unmarkAsBaseline } from "@/lib/api";
 import type { Call } from "@/lib/types";
 
 export default function CallAnalysisPage({
@@ -16,6 +16,7 @@ export default function CallAnalysisPage({
   const [error, setError] = useState<string | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isTogglingBaseline, setIsTogglingBaseline] = useState(false);
 
   const fetchCall = async () => {
     try {
@@ -63,6 +64,25 @@ export default function CallAnalysisPage({
     }
   };
 
+  const handleToggleBaseline = async () => {
+    if (!call) return;
+    setIsTogglingBaseline(true);
+    setError(null);
+
+    try {
+      if (call.is_baseline) {
+        await unmarkAsBaseline(id);
+      } else {
+        await markAsBaseline(id);
+      }
+      await fetchCall();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to toggle baseline");
+    } finally {
+      setIsTogglingBaseline(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -89,6 +109,7 @@ export default function CallAnalysisPage({
   const canTranscribe = call.transcription.status === "pending";
   const canEvaluate = call.transcription.status === "completed" && call.evaluation.status === "pending";
   const hasEvaluation = call.evaluation.result !== null;
+  const canToggleBaseline = call.transcription.status === "completed" && call.evaluation.status === "completed";
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -123,6 +144,11 @@ export default function CallAnalysisPage({
               </>
             )}
           </div>
+          {call.is_baseline && (
+            <div className="mt-3 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+              ⭐ This call is part of your baseline
+            </div>
+          )}
         </div>
 
         {/* Error Message */}
@@ -160,6 +186,22 @@ export default function CallAnalysisPage({
               </button>
               <p className="mt-2 text-xs text-gray-500">
                 Status: <span className="capitalize">{call.evaluation.status}</span>
+              </p>
+            </div>
+            <div className="flex-1">
+              <button
+                onClick={handleToggleBaseline}
+                disabled={!canToggleBaseline || isTogglingBaseline}
+                className="w-full py-2 px-4 bg-amber-600 text-white rounded-md hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isTogglingBaseline
+                  ? "Updating..."
+                  : call.is_baseline
+                  ? "Unmark as Best Call ⭐"
+                  : "Mark as Best Call ⭐"}
+              </button>
+              <p className="mt-2 text-xs text-gray-500">
+                {call.is_baseline ? "Baseline call" : "Not marked as baseline"}
               </p>
             </div>
           </div>

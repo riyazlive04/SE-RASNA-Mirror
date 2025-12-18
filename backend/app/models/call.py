@@ -35,6 +35,12 @@ class Call(Base):
     evaluation_details = Column(JSON, nullable=True)
     evaluation_status = Column(String, default="pending")
 
+    # Baseline tracking
+    # Purpose: Mark exceptional calls as "best examples" for future comparison
+    # Single-user system; no isolation yet
+    is_baseline = Column(Boolean, default=False, nullable=False)
+    baseline_marked_at = Column(DateTime, nullable=True)
+
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

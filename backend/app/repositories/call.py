@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from typing import Optional
+from datetime import datetime
 
 from app.models.call import Call
 
@@ -57,3 +58,42 @@ class CallRepository:
             self.db.commit()
             return True
         return False
+
+    def mark_as_baseline(self, call_id: int) -> Optional[Call]:
+        """
+        Mark a call as baseline (best call example).
+
+        Purpose: Allows users to mark exceptional calls for future comparison.
+        No user isolation in this phase - single-user system.
+
+        Args:
+            call_id: ID of the call to mark as baseline
+
+        Returns:
+            Call: The updated call object, or None if not found
+        """
+        db_call = self.get_by_id(call_id)
+        if db_call:
+            db_call.is_baseline = True
+            db_call.baseline_marked_at = datetime.utcnow()
+            self.db.commit()
+            self.db.refresh(db_call)
+        return db_call
+
+    def unmark_as_baseline(self, call_id: int) -> Optional[Call]:
+        """
+        Remove baseline marking from a call.
+
+        Args:
+            call_id: ID of the call to unmark as baseline
+
+        Returns:
+            Call: The updated call object, or None if not found
+        """
+        db_call = self.get_by_id(call_id)
+        if db_call:
+            db_call.is_baseline = False
+            db_call.baseline_marked_at = None
+            self.db.commit()
+            self.db.refresh(db_call)
+        return db_call
