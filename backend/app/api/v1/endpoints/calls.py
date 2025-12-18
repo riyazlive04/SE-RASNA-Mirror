@@ -242,6 +242,7 @@ async def get_call(
     Get call details by ID
 
     User isolation: Enforces ownership - users can only access their own calls
+    Legacy support: Auto-claims calls with NULL user_id (created before Phase 6)
     """
     call_repo = CallRepository(db)
     db_call = call_repo.get_by_id(call_id)
@@ -251,6 +252,11 @@ async def get_call(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Call not found"
         )
+
+    # Handle legacy calls (NULL user_id from before Phase 6)
+    if db_call.user_id is None:
+        # Auto-claim legacy call for current user (safe for dev/local)
+        db_call = call_repo.claim_legacy_call(call_id, current_user.id)
 
     # Enforce ownership
     if db_call.user_id != current_user.id:
@@ -285,6 +291,10 @@ async def trigger_transcription(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Call not found"
         )
+
+    # Handle legacy calls (NULL user_id from before Phase 6)
+    if db_call.user_id is None:
+        db_call = call_repo.claim_legacy_call(call_id, current_user.id)
 
     # Enforce ownership
     if db_call.user_id != current_user.id:
@@ -378,6 +388,10 @@ async def trigger_evaluation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Call not found"
         )
+
+    # Handle legacy calls (NULL user_id from before Phase 6)
+    if db_call.user_id is None:
+        db_call = call_repo.claim_legacy_call(call_id, current_user.id)
 
     # Enforce ownership
     if db_call.user_id != current_user.id:
@@ -475,6 +489,10 @@ async def mark_as_baseline(
             detail="Call not found"
         )
 
+    # Handle legacy calls (NULL user_id from before Phase 6)
+    if db_call.user_id is None:
+        db_call = call_repo.claim_legacy_call(call_id, current_user.id)
+
     # Enforce ownership
     if db_call.user_id != current_user.id:
         raise HTTPException(
@@ -524,6 +542,10 @@ async def unmark_as_baseline(
             detail="Call not found"
         )
 
+    # Handle legacy calls (NULL user_id from before Phase 6)
+    if db_call.user_id is None:
+        db_call = call_repo.claim_legacy_call(call_id, current_user.id)
+
     # Enforce ownership
     if db_call.user_id != current_user.id:
         raise HTTPException(
@@ -556,6 +578,10 @@ async def delete_call(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Call not found"
         )
+
+    # Handle legacy calls (NULL user_id from before Phase 6)
+    if db_call.user_id is None:
+        db_call = call_repo.claim_legacy_call(call_id, current_user.id)
 
     # Enforce ownership
     if db_call.user_id != current_user.id:

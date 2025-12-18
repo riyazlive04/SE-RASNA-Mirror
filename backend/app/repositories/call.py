@@ -105,3 +105,25 @@ class CallRepository:
             self.db.commit()
             self.db.refresh(db_call)
         return db_call
+
+    def claim_legacy_call(self, call_id: int, user_id: int) -> Optional[Call]:
+        """
+        Assign ownership of a legacy call (NULL user_id) to a user.
+
+        Purpose: Graceful migration for calls created before Phase 6.
+        Only claims calls that have no owner (user_id is NULL).
+
+        Args:
+            call_id: ID of the call to claim
+            user_id: ID of the user to assign ownership to
+
+        Returns:
+            Call: The updated call object, or None if not found or already owned
+        """
+        db_call = self.get_by_id(call_id)
+        # Only claim if call exists and has no owner
+        if db_call and db_call.user_id is None:
+            db_call.user_id = user_id
+            self.db.commit()
+            self.db.refresh(db_call)
+        return db_call
