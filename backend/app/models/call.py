@@ -9,12 +9,8 @@ class Call(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    # User ownership
-    # Purpose: Multi-user isolation - each user sees only their calls
-    # Baseline calls are user-specific
-    # TODO Phase 7: Make nullable=False after migrating legacy calls
-    # Legacy calls (created before Phase 6) may have NULL user_id
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    # TODO Phase 7: Enforce nullable=False after legacy migration
 
     # Call context
     agent_name = Column(String, nullable=False)

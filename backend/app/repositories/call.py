@@ -110,8 +110,10 @@ class CallRepository:
         """
         Assign ownership of a legacy call (NULL user_id) to a user.
 
-        Purpose: Graceful migration for calls created before Phase 6.
-        Only claims calls that have no owner (user_id is NULL).
+        ⚠️ WARNING: Not safe to call automatically. Ownership migration must be explicit.
+
+        This is a helper for Phase 7 migration only.
+        DO NOT call this automatically in Phase 6 endpoints.
 
         Args:
             call_id: ID of the call to claim

@@ -37,19 +37,26 @@ class Settings(BaseSettings):
         Validate JWT secret key is properly configured.
 
         Security: Prevents using weak/default secrets in production.
-        For production, JWT_SECRET_KEY MUST be set via environment variable.
+        FAIL FAST: Raises RuntimeError on app startup if JWT_SECRET_KEY is invalid.
         """
+        # Check for empty or whitespace-only secret
+        if not v or not v.strip():
+            raise RuntimeError(
+                "JWT_SECRET_KEY must be set in production. "
+                "Generate with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+
         # Check minimum length (32 chars = 256 bits minimum)
         if len(v) < 32:
-            raise ValueError(
+            raise RuntimeError(
                 "JWT_SECRET_KEY must be at least 32 characters. "
                 "Generate with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
             )
 
-        # Warn if it looks like a placeholder (optional, but good practice)
-        dangerous_patterns = ["CHANGE", "TODO", "REPLACE", "EXAMPLE", "TEST", "SECRET"]
+        # Reject placeholder patterns
+        dangerous_patterns = ["CHANGE", "TODO", "REPLACE", "EXAMPLE", "TEST", "SECRET", "DEFAULT"]
         if any(pattern in v.upper() for pattern in dangerous_patterns):
-            raise ValueError(
+            raise RuntimeError(
                 "JWT_SECRET_KEY appears to be a placeholder. "
                 "Set a secure random key via environment variable. "
                 "Generate with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
