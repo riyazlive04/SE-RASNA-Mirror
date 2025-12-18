@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { use } from "react";
+import { useRouter } from "next/navigation";
 import { getCall, transcribeCall, evaluateCall, markAsBaseline, unmarkAsBaseline } from "@/lib/api";
 import type { Call } from "@/lib/types";
+import { useAuth } from "@/lib/auth-context";
 
 export default function CallAnalysisPage({
   params,
@@ -11,12 +13,21 @@ export default function CallAnalysisPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [call, setCall] = useState<Call | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isTogglingBaseline, setIsTogglingBaseline] = useState(false);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
 
   const fetchCall = async () => {
     try {
@@ -31,8 +42,10 @@ export default function CallAnalysisPage({
   };
 
   useEffect(() => {
-    fetchCall();
-  }, [id]);
+    if (isAuthenticated) {
+      fetchCall();
+    }
+  }, [id, isAuthenticated]);
 
   const handleTranscribe = async () => {
     if (!call) return;
@@ -83,10 +96,10 @@ export default function CallAnalysisPage({
     }
   };
 
-  if (isLoading) {
+  if (authLoading || isLoading || !isAuthenticated) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading call analysis...</div>
+        <div className="text-gray-600">Loading...</div>
       </div>
     );
   }

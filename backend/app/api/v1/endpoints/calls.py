@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, s
 from sqlalchemy.orm import Session
 from pathlib import Path
 
-from app.api.deps import get_database
+from app.api.deps import get_database, get_current_user
 from app.schemas.call import (
     CallResponse,
     CallListResponse,
@@ -14,6 +14,7 @@ from app.services.storage import StorageService
 from app.services.transcription import TranscriptionService
 from app.services.evaluation import EvaluationService
 from app.core.config import settings
+from app.models.user import User
 
 router = APIRouter()
 
@@ -27,6 +28,7 @@ async def upload_call(
     lead_type: str = Form(...),
     call_stage: str = Form(...),
     deck_shared: bool = Form(False),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_database)
 ):
     """
@@ -146,6 +148,7 @@ async def upload_call(
 
         # Step 2: Create database record
         call_data = {
+            "user_id": current_user.id,
             "agent_name": agent_name.strip(),
             "customer_name": customer_name.strip() if customer_name else None,
             "call_type": call_type.strip(),
@@ -211,14 +214,17 @@ async def upload_call(
 async def list_calls(
     skip: int = 0,
     limit: int = 100,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_database)
 ):
     """
-    List all calls with pagination
+    List all calls for the current user with pagination
+
+    User isolation: Returns only calls belonging to the authenticated user
     """
     call_repo = CallRepository(db)
-    calls = call_repo.get_all(skip=skip, limit=limit)
-    total = call_repo.count()
+    calls = call_repo.get_all_for_user(current_user.id, skip=skip, limit=limit)
+    total = call_repo.count_for_user(current_user.id)
 
     return {
         "total": total,
@@ -229,10 +235,13 @@ async def list_calls(
 @router.get("/{call_id}", response_model=CallResponse)
 async def get_call(
     call_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_database)
 ):
     """
     Get call details by ID
+
+    User isolation: Enforces ownership - users can only access their own calls
     """
     call_repo = CallRepository(db)
     db_call = call_repo.get_by_id(call_id)
@@ -243,12 +252,20 @@ async def get_call(
             detail="Call not found"
         )
 
+    # Enforce ownership
+    if db_call.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this call"
+        )
+
     return _format_call_response(db_call)
 
 
 @router.post("/{call_id}/transcribe", response_model=TranscriptionResponse)
 async def trigger_transcription(
     call_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_database)
 ):
     """
@@ -256,6 +273,7 @@ async def trigger_transcription(
 
     Requirements:
     - Call must exist
+    - User must own the call
     - Transcription must not already be completed
     """
     call_repo = CallRepository(db)
@@ -266,6 +284,13 @@ async def trigger_transcription(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Call not found"
+        )
+
+    # Enforce ownership
+    if db_call.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this call"
         )
 
     # Prevent re-transcription if already completed
@@ -332,6 +357,7 @@ async def trigger_transcription(
 @router.post("/{call_id}/evaluate", response_model=EvaluationResponse)
 async def trigger_evaluation(
     call_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_database)
 ):
     """
@@ -339,6 +365,7 @@ async def trigger_evaluation(
 
     Requirements:
     - Call must exist
+    - User must own the call
     - Transcription must be completed
     - Evaluation must not already be completed
     """
@@ -350,6 +377,13 @@ async def trigger_evaluation(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Call not found"
+        )
+
+    # Enforce ownership
+    if db_call.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this call"
         )
 
     # Validate transcription is completed
@@ -413,6 +447,7 @@ async def trigger_evaluation(
 @router.post("/{call_id}/baseline", response_model=CallResponse)
 async def mark_as_baseline(
     call_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_database)
 ):
     """
@@ -424,10 +459,11 @@ async def mark_as_baseline(
 
     Requirements:
     - Call must exist
+    - User must own the call
     - Transcription must be completed
     - Evaluation must be completed
 
-    Note: Single-user system in this phase - no user isolation yet
+    Note: Baseline calls are user-specific - each user has their own baseline
     """
     call_repo = CallRepository(db)
     db_call = call_repo.get_by_id(call_id)
@@ -437,6 +473,13 @@ async def mark_as_baseline(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Call not found"
+        )
+
+    # Enforce ownership
+    if db_call.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this call"
         )
 
     # Enforce rule: transcription must be completed
@@ -462,6 +505,7 @@ async def mark_as_baseline(
 @router.delete("/{call_id}/baseline", response_model=CallResponse)
 async def unmark_as_baseline(
     call_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_database)
 ):
     """
@@ -480,6 +524,13 @@ async def unmark_as_baseline(
             detail="Call not found"
         )
 
+    # Enforce ownership
+    if db_call.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this call"
+        )
+
     # Unmark as baseline
     updated_call = call_repo.unmark_as_baseline(call_id)
 
@@ -489,10 +540,13 @@ async def unmark_as_baseline(
 @router.delete("/{call_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_call(
     call_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_database)
 ):
     """
     Delete a call and its audio file
+
+    User isolation: Only the owner can delete their call
     """
     call_repo = CallRepository(db)
     db_call = call_repo.get_by_id(call_id)
@@ -501,6 +555,13 @@ async def delete_call(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Call not found"
+        )
+
+    # Enforce ownership
+    if db_call.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to delete this call"
         )
 
     # Delete audio file

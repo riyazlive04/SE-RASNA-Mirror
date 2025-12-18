@@ -39,8 +39,16 @@ class CallRepository:
     def get_all(self, skip: int = 0, limit: int = 100) -> list[Call]:
         return self.db.query(Call).offset(skip).limit(limit).all()
 
+    def get_all_for_user(self, user_id: int, skip: int = 0, limit: int = 100) -> list[Call]:
+        """Get all calls for a specific user with pagination - multi-user isolation"""
+        return self.db.query(Call).filter(Call.user_id == user_id).offset(skip).limit(limit).all()
+
     def count(self) -> int:
         return self.db.query(Call).count()
+
+    def count_for_user(self, user_id: int) -> int:
+        """Count total calls for a specific user - multi-user isolation"""
+        return self.db.query(Call).filter(Call.user_id == user_id).count()
 
     def update(self, call_id: int, update_data: dict) -> Optional[Call]:
         db_call = self.get_by_id(call_id)
@@ -64,7 +72,7 @@ class CallRepository:
         Mark a call as baseline (best call example).
 
         Purpose: Allows users to mark exceptional calls for future comparison.
-        No user isolation in this phase - single-user system.
+        User-specific: Each user has their own baseline calls.
 
         Args:
             call_id: ID of the call to mark as baseline

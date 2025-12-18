@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: int = 30  # Timeout for LLM requests
     LLM_MAX_RETRIES: int = 2  # Maximum retry attempts
 
+    # Authentication Configuration
+    JWT_SECRET_KEY: str = "CHANGE_THIS_IN_PRODUCTION_USE_LONG_RANDOM_STRING"  # Set via environment variable
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+
     class Config:
         case_sensitive = True
         env_file = ".env"

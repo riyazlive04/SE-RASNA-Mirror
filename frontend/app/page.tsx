@@ -1,14 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { uploadCall } from "@/lib/api";
 import type { LeadType, CallStage } from "@/lib/types";
+import { useAuth } from "@/lib/auth-context";
 
 export default function UploadPage() {
   const router = useRouter();
+  const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  // Show loading while checking auth
+  if (authLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-600">Loading...</div>
+      </div>
+    );
+  }
 
   const [formData, setFormData] = useState({
     agent_name: "",
@@ -60,11 +78,22 @@ export default function UploadPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-2xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-light text-gray-900 mb-2">
-            SE RASNA Mirror
-          </h1>
-          <p className="text-gray-600">
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-3xl font-light text-gray-900 mb-1">
+                SE RASNA Mirror
+              </h1>
+              <p className="text-sm text-gray-600">Welcome, {user?.name}</p>
+            </div>
+            <button
+              onClick={logout}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 underline"
+            >
+              Log out
+            </button>
+          </div>
+          <p className="text-gray-600 text-center">
             Upload a sales call for analysis and reflection
           </p>
         </div>

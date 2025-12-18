@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, JSON, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, JSON, Boolean, ForeignKey
 from datetime import datetime
 
 from app.core.database import Base
@@ -8,6 +8,11 @@ class Call(Base):
     __tablename__ = "calls"
 
     id = Column(Integer, primary_key=True, index=True)
+
+    # User ownership
+    # Purpose: Multi-user isolation - each user sees only their calls
+    # Baseline calls are user-specific
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     # Call context
     agent_name = Column(String, nullable=False)
@@ -37,7 +42,7 @@ class Call(Base):
 
     # Baseline tracking
     # Purpose: Mark exceptional calls as "best examples" for future comparison
-    # Single-user system; no isolation yet
+    # User-specific: each user has their own baseline calls
     is_baseline = Column(Boolean, default=False, nullable=False)
     baseline_marked_at = Column(DateTime, nullable=True)
 
