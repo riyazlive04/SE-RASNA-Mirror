@@ -5,10 +5,12 @@ from typing import Optional
 
 class UserSignup(BaseModel):
     """Schema for user signup"""
-    name: str = Field(..., min_length=1, description="User's full name")
+    name: str = Field(..., min_length=1, max_length=100, description="User's full name")
     email: EmailStr = Field(..., description="User's email address")
-    password: str = Field(..., min_length=6, description="User's password (min 6 characters)")
-    domain: Optional[str] = Field(None, description="User's domain/organization")
+    # Password: 6-72 chars (bcrypt limit is 72 bytes)
+    # Prevents DoS via extremely long passwords
+    password: str = Field(..., min_length=6, max_length=72, description="User's password (6-72 characters)")
+    domain: Optional[str] = Field(None, max_length=100, description="User's domain/organization")
 
 
 class UserLogin(BaseModel):

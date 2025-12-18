@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from pathlib import Path
+import secrets
 
 
 class Settings(BaseSettings):
@@ -22,9 +24,38 @@ class Settings(BaseSettings):
     LLM_MAX_RETRIES: int = 2  # Maximum retry attempts
 
     # Authentication Configuration
-    JWT_SECRET_KEY: str = "CHANGE_THIS_IN_PRODUCTION_USE_LONG_RANDOM_STRING"  # Set via environment variable
+    # CRITICAL: Must be set via environment variable in production
+    # Default only for local development (auto-generates secure key)
+    JWT_SECRET_KEY: str = secrets.token_urlsafe(32)
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+
+    @field_validator('JWT_SECRET_KEY')
+    @classmethod
+    def validate_jwt_secret(cls, v: str) -> str:
+        """
+        Validate JWT secret key is properly configured.
+
+        Security: Prevents using weak/default secrets in production.
+        For production, JWT_SECRET_KEY MUST be set via environment variable.
+        """
+        # Check minimum length (32 chars = 256 bits minimum)
+        if len(v) < 32:
+            raise ValueError(
+                "JWT_SECRET_KEY must be at least 32 characters. "
+                "Generate with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+
+        # Warn if it looks like a placeholder (optional, but good practice)
+        dangerous_patterns = ["CHANGE", "TODO", "REPLACE", "EXAMPLE", "TEST", "SECRET"]
+        if any(pattern in v.upper() for pattern in dangerous_patterns):
+            raise ValueError(
+                "JWT_SECRET_KEY appears to be a placeholder. "
+                "Set a secure random key via environment variable. "
+                "Generate with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+
+        return v
 
     class Config:
         case_sensitive = True

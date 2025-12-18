@@ -9,25 +9,11 @@ import { useAuth } from "@/lib/auth-context";
 export default function UploadPage() {
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
+
+  // IMPORTANT: All hooks must be called before any conditional returns
+  // This ensures React hooks are called in the same order every render
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push("/login");
-    }
-  }, [authLoading, isAuthenticated, router]);
-
-  // Show loading while checking auth
-  if (authLoading || !isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
-      </div>
-    );
-  }
-
   const [formData, setFormData] = useState({
     agent_name: "",
     customer_name: "",
@@ -36,8 +22,23 @@ export default function UploadPage() {
     call_stage: "main" as CallStage,
     deck_shared: false,
   });
-
   const [audioFile, setAudioFile] = useState<File | null>(null);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  // Show loading while checking auth (after all hooks are called)
+  if (authLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-600">Loading...</div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
