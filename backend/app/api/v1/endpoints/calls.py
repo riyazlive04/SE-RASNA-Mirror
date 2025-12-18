@@ -191,7 +191,7 @@ async def upload_call(
         # This will be handled by transcription completion callback
 
         # Return successful response
-        return _format_call_response(db_call)
+        return _format_call_response(db_call, current_user.id, db)
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is
@@ -228,7 +228,7 @@ async def list_calls(
 
     return {
         "total": total,
-        "calls": [_format_call_response(call) for call in calls]
+        "calls": [_format_call_response(call, current_user.id, db) for call in calls]
     }
 
 
@@ -264,7 +264,7 @@ async def get_call(
             detail="You don't have permission to access this call"
         )
 
-    return _format_call_response(db_call)
+    return _format_call_response(db_call, current_user.id, db)
 
 
 @router.post("/{call_id}/transcribe", response_model=TranscriptionResponse)
@@ -519,7 +519,7 @@ async def mark_as_baseline(
     # Mark as baseline
     updated_call = call_repo.mark_as_baseline(call_id)
 
-    return _format_call_response(updated_call)
+    return _format_call_response(updated_call, current_user.id, db)
 
 
 @router.delete("/{call_id}/baseline", response_model=CallResponse)
@@ -559,7 +559,7 @@ async def unmark_as_baseline(
     # Unmark as baseline
     updated_call = call_repo.unmark_as_baseline(call_id)
 
-    return _format_call_response(updated_call)
+    return _format_call_response(updated_call, current_user.id, db)
 
 
 @router.delete("/{call_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -604,9 +604,19 @@ async def delete_call(
     return None
 
 
-def _format_call_response(db_call) -> dict:
-    """Helper to format call model to response schema"""
-    return {
+def _format_call_response(db_call, user_id: int = None, db: Session = None) -> dict:
+    """
+    Helper to format call model to response schema.
+
+    Phase 7: Optionally includes baseline comparison if:
+    - user_id and db are provided
+    - User has a baseline
+    - Call has completed evaluation
+    """
+    from app.services.baseline import BaselineService
+
+    # Build base response
+    response = {
         "id": db_call.id,
         "agent_name": db_call.agent_name,
         "customer_name": db_call.customer_name,
@@ -624,10 +634,24 @@ def _format_call_response(db_call) -> dict:
         },
         "evaluation": {
             "result": db_call.evaluation_details,
-            "status": db_call.evaluation_status
+            "status": db_call.evaluation_status,
+            "comparison_to_baseline": None  # Default: null (graceful degradation)
         },
         "is_baseline": db_call.is_baseline,
         "baseline_marked_at": db_call.baseline_marked_at,
         "created_at": db_call.created_at,
         "updated_at": db_call.updated_at
     }
+
+    # Phase 7: Add baseline comparison if available
+    if user_id and db and db_call.evaluation_status == "completed" and db_call.evaluation_details:
+        try:
+            baseline_service = BaselineService(db)
+            comparison = baseline_service.compare_to_baseline(user_id, db_call.evaluation_details)
+            if comparison:
+                response["evaluation"]["comparison_to_baseline"] = comparison
+        except Exception:
+            # Graceful degradation: if baseline comparison fails, just omit it
+            pass
+
+    return response

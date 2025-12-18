@@ -24,9 +24,16 @@ export interface TranscriptionResponse {
   status: Status;
 }
 
+export interface BaselineComparison {
+  above_baseline: string[];
+  below_baseline: string[];
+  summary: string;
+}
+
 export interface EvaluationResponse {
   result: EvaluationResult | null;
   status: Status;
+  comparison_to_baseline?: BaselineComparison | null;
 }
 
 export interface Call {
@@ -57,4 +64,28 @@ export interface UploadCallData {
   call_stage: CallStage;
   deck_shared: boolean;
   audio_file: File;
+}
+
+export interface BaselineSummary {
+  common_strengths: string[];
+  common_improvement_themes: string[];
+  average_overall_score: number;
+}
+
+export interface RasnaAverages {
+  rapport: number;
+  ask: number;
+  situation: number;
+  next_steps: number;
+  articulation: number;
+}
+
+export interface Baseline {
+  id: number;
+  user_id: number;
+  rasna_averages: RasnaAverages;
+  summary: BaselineSummary;
+  call_count: number;
+  created_at: string;
+  updated_at: string;
 }

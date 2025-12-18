@@ -38,9 +38,25 @@ class EvaluationResult(BaseModel):
     next_call_focus: str = Field(..., description="Primary focus area for next call")
 
 
+class BaselineComparison(BaseModel):
+    """
+    Phase 7: Comparison of call evaluation against user's personal baseline.
+
+    Only populated if user has generated a baseline.
+    Null otherwise (graceful degradation).
+    """
+    above_baseline: list[str] = Field(..., description="RASNA dimensions above baseline")
+    below_baseline: list[str] = Field(..., description="RASNA dimensions below baseline")
+    summary: str = Field(..., description="Human-readable comparison summary")
+
+
 class EvaluationResponse(BaseModel):
     result: Optional[EvaluationResult]
     status: Literal["pending", "completed", "failed"]
+    comparison_to_baseline: Optional[BaselineComparison] = Field(
+        None,
+        description="Comparison to user's personal baseline (Phase 7). Null if no baseline exists."
+    )
 
     class Config:
         from_attributes = True

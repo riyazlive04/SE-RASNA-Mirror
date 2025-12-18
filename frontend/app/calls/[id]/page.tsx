@@ -279,6 +279,48 @@ export default function CallAnalysisPage({
               </div>
             </div>
 
+            {/* Baseline Comparison (Phase 7) */}
+            {call.evaluation.comparison_to_baseline && (
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 shadow-sm rounded-lg p-6 mb-6 border border-blue-200">
+                <h2 className="text-lg font-medium text-gray-900 mb-4">
+                  Compared to Your Best Calls
+                </h2>
+                <p className="text-sm text-gray-700 mb-4">
+                  {call.evaluation.comparison_to_baseline.summary}
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {call.evaluation.comparison_to_baseline.above_baseline.length > 0 && (
+                    <div className="bg-white p-4 rounded-md">
+                      <h3 className="text-sm font-medium text-green-700 mb-2">
+                        ✅ Stronger than baseline
+                      </h3>
+                      <ul className="space-y-1">
+                        {call.evaluation.comparison_to_baseline.above_baseline.map((dim, idx) => (
+                          <li key={idx} className="text-sm text-gray-700 capitalize">
+                            • {dim.replace(/_/g, " ")}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {call.evaluation.comparison_to_baseline.below_baseline.length > 0 && (
+                    <div className="bg-white p-4 rounded-md">
+                      <h3 className="text-sm font-medium text-amber-700 mb-2">
+                        ⚠️ Room to match your best
+                      </h3>
+                      <ul className="space-y-1">
+                        {call.evaluation.comparison_to_baseline.below_baseline.map((dim, idx) => (
+                          <li key={idx} className="text-sm text-gray-700 capitalize">
+                            • {dim.replace(/_/g, " ")}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Strengths */}
             <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
               <h2 className="text-lg font-medium text-gray-900 mb-4">

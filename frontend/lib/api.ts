@@ -1,4 +1,4 @@
-import type { Call, UploadCallData } from "./types";
+import type { Call, UploadCallData, Baseline } from "./types";
 
 const API_BASE_URL = "http://localhost:8000/api/v1";
 
@@ -159,6 +159,38 @@ export async function unmarkAsBaseline(id: string): Promise<Call> {
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || "Failed to unmark as baseline");
+  }
+
+  return response.json();
+}
+
+// Baseline API functions (Phase 7)
+export async function generateBaseline(): Promise<Baseline> {
+  const response = await fetch(`${API_BASE_URL}/baseline/generate`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to generate baseline");
+  }
+
+  return response.json();
+}
+
+export async function getBaseline(): Promise<Baseline | null> {
+  const response = await fetch(`${API_BASE_URL}/baseline/`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (response.status === 404) {
+    return null; // No baseline exists yet
+  }
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch baseline");
   }
 
   return response.json();
