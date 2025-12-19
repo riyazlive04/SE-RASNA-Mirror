@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_database, get_current_user
@@ -85,7 +86,7 @@ async def get_baseline_trends(
     - Which dimensions stayed stable
     - Delta values per dimension
 
-    Returns null (204 No Content) if user has <2 snapshots.
+    Returns 204 No Content if user has <2 snapshots.
     Requires user to have regenerated baseline at least twice.
 
     User isolation: Only returns current user's trends
@@ -97,10 +98,8 @@ async def get_baseline_trends(
 
     if not trend:
         # Graceful degradation: <2 snapshots available
-        # Return 204 No Content instead of 404 (not an error, just no data yet)
-        raise HTTPException(
-            status_code=status.HTTP_204_NO_CONTENT,
-            detail="Insufficient snapshots for trend analysis. Regenerate your baseline at least once more to see evolution trends."
-        )
+        # HTTP 204 No Content = success but no data available yet
+        # No response body per HTTP semantics
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return trend
