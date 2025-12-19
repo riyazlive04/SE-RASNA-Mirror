@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, JSON, DateTime, Boolean, ForeignKey
 from datetime import datetime
 
 from app.core.database import Base
@@ -42,6 +42,14 @@ class UserBaseline(Base):
 
     # Number of baseline calls used to generate this baseline
     call_count = Column(Integer, nullable=False)
+
+    # Phase 7.1: Staleness tracking
+    # Set to True when:
+    # - A call is marked as baseline (new best call added)
+    # - A call is unmarked from baseline (best call removed)
+    # Reset to False when baseline is regenerated
+    # User should regenerate baseline when stale
+    is_stale = Column(Boolean, default=False, nullable=False)
 
     # Audit timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

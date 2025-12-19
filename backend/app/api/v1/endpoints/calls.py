@@ -190,8 +190,8 @@ async def upload_call(
         # TODO: Phase 3 - After transcription completes, trigger evaluation
         # This will be handled by transcription completion callback
 
-        # Return successful response
-        return _format_call_response(db_call, current_user.id, db)
+        # Return successful response (no baseline comparison on upload)
+        return _format_call_response(db_call)
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is
@@ -228,7 +228,7 @@ async def list_calls(
 
     return {
         "total": total,
-        "calls": [_format_call_response(call, current_user.id, db) for call in calls]
+        "calls": [_format_call_response(call) for call in calls]  # No baseline comparison in list view
     }
 
 
@@ -264,7 +264,9 @@ async def get_call(
             detail="You don't have permission to access this call"
         )
 
-    return _format_call_response(db_call, current_user.id, db)
+    # Phase 7.1: Explicitly compute baseline comparison for detail view
+    comparison = _get_baseline_comparison(db_call, current_user.id, db)
+    return _format_call_response(db_call, comparison)
 
 
 @router.post("/{call_id}/transcribe", response_model=TranscriptionResponse)
@@ -519,7 +521,14 @@ async def mark_as_baseline(
     # Mark as baseline
     updated_call = call_repo.mark_as_baseline(call_id)
 
-    return _format_call_response(updated_call, current_user.id, db)
+    # Phase 7.1: Mark baseline as stale (new best call added)
+    from app.services.baseline import BaselineService
+    baseline_service = BaselineService(db)
+    baseline_service.mark_baseline_as_stale(current_user.id)
+
+    # Phase 7.1: Include baseline comparison in response
+    comparison = _get_baseline_comparison(updated_call, current_user.id, db)
+    return _format_call_response(updated_call, comparison)
 
 
 @router.delete("/{call_id}/baseline", response_model=CallResponse)
@@ -559,7 +568,14 @@ async def unmark_as_baseline(
     # Unmark as baseline
     updated_call = call_repo.unmark_as_baseline(call_id)
 
-    return _format_call_response(updated_call, current_user.id, db)
+    # Phase 7.1: Mark baseline as stale (best call removed)
+    from app.services.baseline import BaselineService
+    baseline_service = BaselineService(db)
+    baseline_service.mark_baseline_as_stale(current_user.id)
+
+    # Phase 7.1: Include baseline comparison in response
+    comparison = _get_baseline_comparison(updated_call, current_user.id, db)
+    return _format_call_response(updated_call, comparison)
 
 
 @router.delete("/{call_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -604,19 +620,14 @@ async def delete_call(
     return None
 
 
-def _format_call_response(db_call, user_id: int = None, db: Session = None) -> dict:
+def _format_call_response(db_call, comparison_to_baseline: dict = None) -> dict:
     """
-    Helper to format call model to response schema.
+    Pure formatter: converts Call model to response dict.
 
-    Phase 7: Optionally includes baseline comparison if:
-    - user_id and db are provided
-    - User has a baseline
-    - Call has completed evaluation
+    Phase 7.1: Accepts pre-computed baseline comparison.
+    NO business logic, NO service calls, NO database queries.
     """
-    from app.services.baseline import BaselineService
-
-    # Build base response
-    response = {
+    return {
         "id": db_call.id,
         "agent_name": db_call.agent_name,
         "customer_name": db_call.customer_name,
@@ -635,7 +646,7 @@ def _format_call_response(db_call, user_id: int = None, db: Session = None) -> d
         "evaluation": {
             "result": db_call.evaluation_details,
             "status": db_call.evaluation_status,
-            "comparison_to_baseline": None  # Default: null (graceful degradation)
+            "comparison_to_baseline": comparison_to_baseline  # Pre-computed or None
         },
         "is_baseline": db_call.is_baseline,
         "baseline_marked_at": db_call.baseline_marked_at,
@@ -643,15 +654,27 @@ def _format_call_response(db_call, user_id: int = None, db: Session = None) -> d
         "updated_at": db_call.updated_at
     }
 
-    # Phase 7: Add baseline comparison if available
-    if user_id and db and db_call.evaluation_status == "completed" and db_call.evaluation_details:
-        try:
-            baseline_service = BaselineService(db)
-            comparison = baseline_service.compare_to_baseline(user_id, db_call.evaluation_details)
-            if comparison:
-                response["evaluation"]["comparison_to_baseline"] = comparison
-        except Exception:
-            # Graceful degradation: if baseline comparison fails, just omit it
-            pass
 
-    return response
+def _get_baseline_comparison(db_call, user_id: int, db: Session) -> dict:
+    """
+    Phase 7.1: Explicit baseline comparison helper.
+
+    Only computes comparison if:
+    - Evaluation is completed
+    - User has a baseline
+
+    Returns None on any failure (graceful degradation).
+    """
+    from app.services.baseline import BaselineService
+
+    # Only compare if evaluation is completed
+    if db_call.evaluation_status != "completed" or not db_call.evaluation_details:
+        return None
+
+    try:
+        baseline_service = BaselineService(db)
+        comparison = baseline_service.compare_to_baseline(user_id, db_call.evaluation_details)
+        return comparison
+    except Exception:
+        # Graceful degradation: if baseline comparison fails, return None
+        return None

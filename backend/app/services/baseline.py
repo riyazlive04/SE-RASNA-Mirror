@@ -8,6 +8,11 @@ from app.repositories.user_baseline import UserBaselineRepository
 
 logger = logging.getLogger(__name__)
 
+# Phase 7.1: Centralized threshold constants
+STRENGTH_THRESHOLD = 8.0  # RASNA score >= 8.0 considered a strength
+IMPROVEMENT_THRESHOLD = 7.0  # RASNA score < 7.0 needs improvement
+COMPARISON_DELTA_THRESHOLD = 0.5  # Min difference for meaningful baseline comparison
+
 
 class BaselineService:
     """
@@ -71,11 +76,13 @@ class BaselineService:
         summary = self._generate_summary(baseline_calls, rasna_averages)
 
         # Prepare baseline data
+        # Phase 7.1: Set is_stale=False when generating/regenerating
         baseline_data = {
             "user_id": user_id,
             "rasna_averages": rasna_averages,
             "summary_json": summary,
-            "call_count": len(baseline_calls)
+            "call_count": len(baseline_calls),
+            "is_stale": False  # Fresh baseline
         }
 
         # Check if baseline already exists
@@ -107,6 +114,24 @@ class BaselineService:
             return None
         return self._format_baseline_response(baseline)
 
+    def mark_baseline_as_stale(self, user_id: int) -> None:
+        """
+        Phase 7.1: Mark baseline as stale when baseline calls change.
+
+        Called when:
+        - A call is marked as baseline (new best call added)
+        - A call is unmarked from baseline (best call removed)
+
+        Does NOT auto-regenerate. User must explicitly regenerate.
+
+        Args:
+            user_id: ID of the user
+        """
+        baseline = self.baseline_repo.get_by_user_id(user_id)
+        if baseline and not baseline.is_stale:
+            self.baseline_repo.update(user_id, {"is_stale": True})
+            logger.info(f"Marked baseline as stale for user {user_id}")
+
     def compare_to_baseline(self, user_id: int, evaluation_details: Dict) -> Optional[Dict]:
         """
         Compare a call's evaluation against user's baseline.
@@ -124,23 +149,45 @@ class BaselineService:
         if not baseline:
             return None
 
-        # Extract scores from evaluation
-        rasna_scores = evaluation_details.get("rasna_scores", {})
-        baseline_averages = baseline.rasna_averages
+        # Phase 7.1: Defensive extraction with safeguards
+        try:
+            rasna_scores = evaluation_details.get("rasna_scores", {})
+            if not isinstance(rasna_scores, dict):
+                logger.warning("Invalid rasna_scores format in evaluation_details")
+                return None
+
+            baseline_averages = baseline.rasna_averages
+            if not isinstance(baseline_averages, dict):
+                logger.warning("Invalid rasna_averages format in baseline")
+                return None
+        except (AttributeError, TypeError) as e:
+            logger.warning(f"Failed to extract scores for baseline comparison: {e}")
+            return None
 
         # Compare each dimension
         above_baseline = []
         below_baseline = []
 
         for dimension in ["rapport", "ask", "situation", "next_steps", "articulation"]:
-            current_score = rasna_scores.get(dimension, {}).get("score", 0)
-            baseline_score = baseline_averages.get(dimension, 0)
+            try:
+                # Defensive: handle both nested dict and direct score
+                dim_data = rasna_scores.get(dimension, {})
+                current_score = dim_data.get("score", 0) if isinstance(dim_data, dict) else dim_data
+                if not isinstance(current_score, (int, float)):
+                    current_score = 0
 
-            # Threshold: >0.5 points difference to be meaningful
-            if current_score > baseline_score + 0.5:
-                above_baseline.append(dimension)
-            elif current_score < baseline_score - 0.5:
-                below_baseline.append(dimension)
+                baseline_score = baseline_averages.get(dimension, 0)
+                if not isinstance(baseline_score, (int, float)):
+                    baseline_score = 0
+
+                # Compare using centralized threshold
+                if current_score > baseline_score + COMPARISON_DELTA_THRESHOLD:
+                    above_baseline.append(dimension)
+                elif current_score < baseline_score - COMPARISON_DELTA_THRESHOLD:
+                    below_baseline.append(dimension)
+            except (AttributeError, TypeError, KeyError):
+                # Skip dimension on error
+                continue
 
         # Generate comparison summary
         summary = self._generate_comparison_summary(above_baseline, below_baseline)
@@ -166,13 +213,20 @@ class BaselineService:
 
     def _calculate_rasna_averages(self, calls: List[Call]) -> Dict[str, float]:
         """
+        Phase 7.1: Defensive aggregation with safeguards.
+
         Calculate average RASNA scores across baseline calls.
+        Guards against:
+        - Missing dimensions
+        - None/null scores
+        - Empty score lists
+        - Malformed evaluation data
 
         Args:
             calls: List of baseline calls with completed evaluations
 
         Returns:
-            dict: Average scores for each RASNA dimension
+            dict: Average scores for each RASNA dimension (0.0 if missing)
         """
         dimensions = ["rapport", "ask", "situation", "next_steps", "articulation"]
         averages = {}
@@ -180,14 +234,34 @@ class BaselineService:
         for dimension in dimensions:
             scores = []
             for call in calls:
-                if call.evaluation_details:
-                    rasna_scores = call.evaluation_details.get("rasna_scores", {})
-                    score = rasna_scores.get(dimension, {}).get("score")
-                    if score is not None:
-                        scores.append(score)
+                try:
+                    # Defensive: check evaluation_details exists and is dict
+                    if not call.evaluation_details or not isinstance(call.evaluation_details, dict):
+                        continue
 
-            # Calculate average (or 0 if no scores)
-            averages[dimension] = round(sum(scores) / len(scores), 2) if scores else 0.0
+                    rasna_scores = call.evaluation_details.get("rasna_scores", {})
+                    if not isinstance(rasna_scores, dict):
+                        continue
+
+                    # Defensive: handle both nested dict and direct score
+                    dim_data = rasna_scores.get(dimension)
+                    if dim_data is None:
+                        continue
+
+                    # Extract score (handle both {"score": X} and direct number)
+                    score = dim_data.get("score") if isinstance(dim_data, dict) else dim_data
+                    if score is not None and isinstance(score, (int, float)):
+                        scores.append(float(score))
+                except (AttributeError, TypeError, KeyError):
+                    # Skip malformed data gracefully
+                    continue
+
+            # Calculate average with defensive guard against division by zero
+            if scores:
+                averages[dimension] = round(sum(scores) / len(scores), 2)
+            else:
+                averages[dimension] = 0.0
+                logger.warning(f"No valid scores found for dimension '{dimension}' in baseline calls")
 
         return averages
 
@@ -196,8 +270,8 @@ class BaselineService:
         Generate summary insights from baseline calls.
 
         Pure aggregation, no LLM. Identifies:
-        - Common strengths (dimensions with avg score ≥ 8.0)
-        - Common improvement themes (dimensions with avg score < 7.0)
+        - Common strengths (dimensions with avg score ≥ STRENGTH_THRESHOLD)
+        - Common improvement themes (dimensions with avg score < IMPROVEMENT_THRESHOLD)
         - Overall average score
 
         Args:
@@ -207,9 +281,9 @@ class BaselineService:
         Returns:
             dict: Summary insights
         """
-        # Identify strengths and improvement areas
-        common_strengths = [dim for dim, score in rasna_averages.items() if score >= 8.0]
-        common_improvement_themes = [dim for dim, score in rasna_averages.items() if score < 7.0]
+        # Identify strengths and improvement areas using centralized thresholds
+        common_strengths = [dim for dim, score in rasna_averages.items() if score >= STRENGTH_THRESHOLD]
+        common_improvement_themes = [dim for dim, score in rasna_averages.items() if score < IMPROVEMENT_THRESHOLD]
 
         # Calculate overall average
         overall_avg = round(sum(rasna_averages.values()) / len(rasna_averages), 2)
@@ -252,6 +326,7 @@ class BaselineService:
             "rasna_averages": baseline.rasna_averages,
             "summary": baseline.summary_json,
             "call_count": baseline.call_count,
+            "is_stale": baseline.is_stale,  # Phase 7.1: Staleness indicator
             "created_at": baseline.created_at.isoformat(),
             "updated_at": baseline.updated_at.isoformat()
         }

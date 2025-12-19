@@ -86,6 +86,7 @@ export interface Baseline {
   rasna_averages: RasnaAverages;
   summary: BaselineSummary;
   call_count: number;
+  is_stale: boolean;  // Phase 7.1: True when baseline calls changed
   created_at: string;
   updated_at: string;
 }
