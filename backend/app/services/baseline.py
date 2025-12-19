@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.call import Call
 from app.repositories.call import CallRepository
 from app.repositories.user_baseline import UserBaselineRepository
+from app.repositories.user_baseline_snapshot import UserBaselineSnapshotRepository
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class BaselineService:
         self.db = db
         self.call_repo = CallRepository(db)
         self.baseline_repo = UserBaselineRepository(db)
+        self.snapshot_repo = UserBaselineSnapshotRepository(db)  # Phase 8: Snapshot tracking
 
     def generate_baseline_for_user(self, user_id: int) -> Dict:
         """
@@ -96,6 +98,22 @@ class BaselineService:
             # Create new
             result = self.baseline_repo.create(baseline_data)
             logger.info(f"Generated baseline for user {user_id} from {len(baseline_calls)} calls")
+
+        # Phase 8: Create snapshot for trend tracking
+        # Snapshot created ONLY when user explicitly regenerates baseline
+        # No automatic creation - explicit user action required
+        snapshot_data = {
+            "user_id": user_id,
+            "rasna_averages": rasna_averages,
+            "summary_json": summary,
+            "call_count": len(baseline_calls)
+        }
+        try:
+            self.snapshot_repo.create(snapshot_data)
+            logger.info(f"Created baseline snapshot for user {user_id}")
+        except Exception as e:
+            # Graceful degradation: snapshot creation failure doesn't break baseline generation
+            logger.error(f"Failed to create baseline snapshot for user {user_id}: {e}")
 
         return self._format_baseline_response(result)
 

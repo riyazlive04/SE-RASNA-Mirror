@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_database, get_current_user
 from app.models.user import User
 from app.services.baseline import BaselineService
+from app.services.baseline_trends import BaselineTrendService
 
 router = APIRouter()
 
@@ -68,3 +69,38 @@ async def get_baseline(
         )
 
     return baseline
+
+
+@router.get("/trends", status_code=status.HTTP_200_OK)
+async def get_baseline_trends(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_database)
+):
+    """
+    Phase 8: Get baseline evolution trends for current user.
+
+    Compares last two baseline snapshots to show:
+    - Which RASNA dimensions improved
+    - Which dimensions declined
+    - Which dimensions stayed stable
+    - Delta values per dimension
+
+    Returns null (204 No Content) if user has <2 snapshots.
+    Requires user to have regenerated baseline at least twice.
+
+    User isolation: Only returns current user's trends
+    No side effects: Pure GET operation, no data mutation
+    """
+    trend_service = BaselineTrendService(db)
+
+    trend = trend_service.get_trend_for_user(current_user.id)
+
+    if not trend:
+        # Graceful degradation: <2 snapshots available
+        # Return 204 No Content instead of 404 (not an error, just no data yet)
+        raise HTTPException(
+            status_code=status.HTTP_204_NO_CONTENT,
+            detail="Insufficient snapshots for trend analysis. Regenerate your baseline at least once more to see evolution trends."
+        )
+
+    return trend

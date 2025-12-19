@@ -90,3 +90,17 @@ export interface Baseline {
   created_at: string;
   updated_at: string;
 }
+
+// Phase 8: Baseline evolution trend
+export interface BaselineTrend {
+  improved_dimensions: string[];
+  declined_dimensions: string[];
+  stable_dimensions: string[];
+  dimension_deltas: Record<string, number>;
+  summary: string;
+  snapshots_compared: number;
+  latest_snapshot_date: string;
+  previous_snapshot_date: string;
+  latest_call_count: number;
+  previous_call_count: number;
+}
