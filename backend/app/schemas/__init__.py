@@ -7,6 +7,11 @@ from app.schemas.call import (
     RasnaScore,
     EvaluationResult
 )
+from app.schemas.coaching_playbook import (
+    CoachingPlaybook,
+    PersonalCoachingPlaybook,
+    TeamCoachingPlaybook
+)
 
 __all__ = [
     "CallCreate",
@@ -15,5 +20,8 @@ __all__ = [
     "TranscriptionResponse",
     "EvaluationResponse",
     "RasnaScore",
-    "EvaluationResult"
+    "EvaluationResult",
+    "CoachingPlaybook",
+    "PersonalCoachingPlaybook",
+    "TeamCoachingPlaybook"
 ]

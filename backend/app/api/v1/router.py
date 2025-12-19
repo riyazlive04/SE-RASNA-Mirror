@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import calls, auth, baseline, teams
+from app.api.v1.endpoints import calls, auth, baseline, teams, coaching
 
 api_router = APIRouter()
 
@@ -27,4 +27,11 @@ api_router.include_router(
     teams.router,
     prefix="/teams",
     tags=["teams"]
+)
+
+# Phase 10: Coaching playbooks endpoints
+api_router.include_router(
+    coaching.router,
+    prefix="/coaching",
+    tags=["coaching"]
 )

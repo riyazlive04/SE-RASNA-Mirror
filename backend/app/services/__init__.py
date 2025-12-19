@@ -6,6 +6,7 @@ from app.services.baseline_trends import BaselineTrendService
 from app.services.team import TeamService
 from app.services.team_baseline import TeamBaselineService
 from app.services.team_trends import TeamTrendService
+from app.services.coaching_playbooks import CoachingPlaybookService
 
 __all__ = [
     "StorageService",
@@ -16,4 +17,5 @@ __all__ = [
     "TeamService",
     "TeamBaselineService",
     "TeamTrendService",
+    "CoachingPlaybookService",
 ]
