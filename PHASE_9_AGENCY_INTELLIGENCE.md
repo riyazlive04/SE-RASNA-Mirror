@@ -506,3 +506,346 @@ Phase 9 provides **safe, aggregated, opt-in team intelligence** that helps manag
 **Key Principle**: "Help managers see the team's aggregate progress while keeping individual performance private."
 
 No surveillance. No forced sharing. No trust erosion. Pure team-level aggregated analytics.
+
+---
+
+# Phase 9.1: Trust & UX Safeguards
+
+## Overview
+
+Phase 9.1 is a **hardening and UX refinement phase** focused on preventing misinterpretation and reinforcing trust guarantees. This phase does NOT add new features—it makes existing features **psychologically safer** and **semantically clearer**.
+
+## Why UX Wording Matters
+
+Team intelligence features carry **inherent trust risk**. Without careful UX design, they can be perceived as:
+
+- ❌ Surveillance tools
+- ❌ Individual performance tracking
+- ❌ Ranking systems
+- ❌ Punitive mechanisms
+
+**Phase 9.1 prevents this** by making privacy guarantees **visually and semantically explicit**.
+
+## Backend Hardening (Phase 9.1)
+
+### 1. Strict Minimum Team Size Enforcement
+
+**Before (Phase 9):**
+- Checked team size, returned error
+
+**After (Phase 9.1):**
+- Checked team size with **explicit privacy explanation**
+- Added clear warning logs when aggregation blocked
+- Error messages explain **why** minimum size protects privacy
+
+**Example error message:**
+```
+"Team must have at least 2 members for aggregation.
+This protects individual privacy by preventing reverse-engineering of scores."
+```
+
+**Logging:**
+```python
+logger.warning(
+    f"Team baseline generation blocked for team {team_id}: "
+    f"Only {len(member_ids)} member(s), minimum 2 required for privacy"
+)
+```
+
+### 2. Minimum Snapshot Enforcement for Trends
+
+**What happens:**
+- `GET /teams/{id}/trends` returns `None` if <2 snapshots
+- API returns `204 No Content` (no body)
+- Clear log message explains why trends unavailable
+
+**Logging:**
+```python
+logger.info(
+    f"Team trend analysis unavailable for team {team_id}: "
+    f"Only {len(snapshots)} snapshot(s), minimum 2 required for trend analysis"
+)
+```
+
+### 3. Graceful Degradation with Transparency
+
+All aggregation failures now log:
+- **Why** the operation failed
+- **What** data was missing
+- **How many** members/snapshots were insufficient
+
+This helps debugging **without** exposing individual data.
+
+## UX Language Guidelines
+
+### ✅ Safe Language
+
+**Use these phrases:**
+- "Team average"
+- "Aggregated team data"
+- "No individual scores shown"
+- "Team-level insight"
+- "Averaged across team"
+- "Aggregated (no individual attribution)"
+
+**Show role awareness:**
+- "You are viewing this as a Manager"
+- "Members cannot see this data"
+- "Only owners and managers can view team aggregates"
+
+### ❌ Unsafe Language
+
+**Never say:**
+- "Performance of agents"
+- "Employee rankings"
+- "Individual scores"
+- "Who performed best"
+- "Compare agents"
+- "Track individual performance"
+
+## Frontend UX Safeguards (Guidance)
+
+When implementing team dashboards, these UX signals should be included:
+
+### 1. Team Baseline Cards
+
+**Every team aggregate card must include:**
+
+```tsx
+<div className="text-xs text-gray-600 mb-2">
+  📊 Aggregated team data — no individual scores shown
+</div>
+```
+
+**Visual hierarchy:**
+- Team name (prominent)
+- Role indicator: "You are viewing as Manager"
+- Aggregated data (with disclaimer)
+- Clear "Generate Baseline" button (manager only)
+
+### 2. Role Awareness Banner
+
+**For managers/owners:**
+```tsx
+<div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
+  <p className="text-sm text-blue-900">
+    You are viewing team aggregates as a <strong>Manager</strong>.
+    Members cannot see this data.
+  </p>
+</div>
+```
+
+**For members (if they somehow access team page):**
+```tsx
+<div className="bg-gray-50 border border-gray-200 rounded p-4">
+  <p className="text-sm text-gray-700">
+    Team-level aggregated data is only visible to owners and managers.
+    You can view your own personal baseline in your dashboard.
+  </p>
+</div>
+```
+
+### 3. Trend Availability Messaging
+
+**When `GET /teams/{id}/trends` returns 204:**
+
+```tsx
+<div className="bg-gray-50 rounded-lg p-6 text-center">
+  <p className="text-sm text-gray-600">
+    Team trends appear after at least two team baselines are generated.
+  </p>
+  <p className="text-xs text-gray-500 mt-2">
+    Generate your team's baseline from the team dashboard.
+  </p>
+</div>
+```
+
+**Calm, neutral tone—not an error.**
+
+### 4. Empty States
+
+**No team baseline yet:**
+```tsx
+<div className="bg-white rounded-lg p-8 text-center border border-gray-200">
+  <p className="text-gray-600 mb-2">No team baseline generated yet</p>
+  <p className="text-sm text-gray-500">
+    Team baselines show aggregated averages across all team members.
+  </p>
+  <button className="mt-4 ...">Generate Team Baseline</button>
+</div>
+```
+
+**Emphasis:**
+- "Aggregated averages"
+- "Across all team members"
+- No individual attribution
+
+### 5. Staleness Awareness (Future)
+
+If team composition changes (new members join after last snapshot):
+
+```tsx
+{teamCompositionChanged && (
+  <div className="bg-amber-50 border border-amber-200 rounded p-4 mb-4">
+    <h3 className="text-sm font-medium text-amber-900 mb-1">
+      Team composition changed
+    </h3>
+    <p className="text-sm text-amber-800">
+      New members joined since last baseline.
+      Regenerate baseline for updated team averages.
+    </p>
+  </div>
+)}
+```
+
+**No auto-regeneration. User stays in control.**
+
+## How Aggregation Protects Teams
+
+### Privacy by Design
+
+**Problem:** If team has only 1 member, team average = individual score.
+**Solution:** Minimum 2 members enforced for all aggregation.
+
+**Problem:** Members might fear being identifiable in small teams.
+**Solution:** Clear messaging that only averages are shown.
+
+**Example:**
+- Team of 5 members
+- RASNA rapport scores: [7.5, 8.0, 8.2, 7.8, 8.5]
+- **Team average shown:** 8.0
+- **Individual scores:** NEVER exposed
+
+Even if a member leaves, historical snapshots remain aggregated.
+
+### Why Members Never See Team Analytics
+
+**Design Decision:** Members can ONLY view their personal data.
+
+**Rationale:**
+1. **Prevents social comparison anxiety**
+   - Members don't know if they're "above" or "below" team average
+   - No implied ranking
+
+2. **Prevents gaming the system**
+   - Members can't adjust behavior to match team averages
+   - Focus stays on personal improvement (Phase 7)
+
+3. **Maintains trust**
+   - Members know managers see only aggregates
+   - No fear of individual score exposure
+
+4. **Avoids toxic competition**
+   - No leaderboards
+   - No peer pressure based on team metrics
+
+## Why This Avoids Fear-Based Adoption Failure
+
+### Common Failure Modes (Other Systems)
+
+**Failure Mode 1: Surveillance Perception**
+- Problem: Users perceive team analytics as "Big Brother watching"
+- Result: Resistance, minimal adoption, trust erosion
+
+**Phase 9.1 Solution:**
+- Clear role boundaries ("Members cannot see this")
+- No automatic tracking
+- Explicit "aggregated only" labels
+
+**Failure Mode 2: Individual Attribution**
+- Problem: Users fear being identified from aggregated data
+- Result: Anxiety, reduced engagement
+
+**Phase 9.1 Solution:**
+- Minimum team size (2+) enforced
+- "No individual scores shown" repeated everywhere
+- Mathematical impossibility to reverse-engineer in larger teams
+
+**Failure Mode 3: Forced Participation**
+- Problem: Users enrolled in teams without consent
+- Result: Resentment, sabotage
+
+**Phase 9.1 Solution:**
+- Explicit invitation only
+- No auto-enrollment
+- Users can (future) leave teams
+
+### Trust-Building Language Patterns
+
+**Pattern 1: Transparency**
+- "Here's what managers can see: [aggregated averages]"
+- "Here's what members cannot see: [team aggregates]"
+
+**Pattern 2: User Control**
+- "Only you can mark your best calls" (Phase 7)
+- "Team baselines require your completed evaluations, but your scores are averaged"
+
+**Pattern 3: Privacy Explanation**
+- "Minimum 2 members prevents individual identification"
+- "Team trends compare team averages over time, not individuals"
+
+## Testing Checklist (Phase 9.1)
+
+Before deploying Phase 9.1, verify:
+
+### Backend:
+- [ ] Team baseline generation fails with <2 members
+- [ ] Error message explains privacy reasoning
+- [ ] Warning logs generated for blocked aggregations
+- [ ] Team trends return `None` with <2 snapshots
+- [ ] Info logs generated for insufficient snapshots
+- [ ] No partial aggregation ever occurs
+
+### Frontend (when team dashboard implemented):
+- [ ] All team aggregate cards show "no individual scores" disclaimer
+- [ ] Role awareness banner appears for managers
+- [ ] Members receive clear message if accessing team page
+- [ ] Empty states use calm, neutral language
+- [ ] Trend unavailability shows helpful hint (not error)
+- [ ] No language implies surveillance or ranking
+
+### Copy Audit:
+- [ ] No use of "performance of agents"
+- [ ] No use of "employee" language
+- [ ] No ranking or leaderboard implications
+- [ ] "Team average" used consistently
+- [ ] "Aggregated" appears near all team data
+
+## Architectural Benefits of Phase 9.1
+
+### 1. Prevents Trust Erosion
+
+By making privacy **visible**, not just enforced:
+- Users understand WHY minimum team size exists
+- Managers understand they see ONLY aggregates
+- Clear boundaries prevent feature creep into surveillance
+
+### 2. Reduces Support Load
+
+Clear error messages reduce confusion:
+- "Why can't I generate team baseline?" → Error explains minimum 2 members
+- "Where are team trends?" → Message explains need for 2 snapshots
+
+### 3. Enables Safe Scaling
+
+Trust safeguards enable:
+- Larger team deployments
+- Cross-team features (future)
+- Agency-wide rollouts
+
+Without Phase 9.1, adoption resistance would limit growth.
+
+## Summary
+
+Phase 9.1 transforms team intelligence from **technically safe** to **psychologically safe**.
+
+**Key Improvements:**
+- ✅ Explicit privacy explanations in errors
+- ✅ Clear logging for debugging without exposing data
+- ✅ UX language guidelines prevent misinterpretation
+- ✅ Role awareness prevents unauthorized access attempts
+- ✅ Empty states guide users without frustration
+
+**Result:** Team features that users **trust** and managers **adopt confidently**.
+
+**Philosophy:** "Privacy by design, trust by transparency."

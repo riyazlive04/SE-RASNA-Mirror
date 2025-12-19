@@ -49,6 +49,8 @@ class TeamBaselineService:
         Phase 9: Explicit action only.
         Computes average RASNA scores across all team members.
 
+        Phase 9.1: Enforces privacy guardrails strictly.
+
         Args:
             team_id: Team to generate baseline for
 
@@ -60,20 +62,32 @@ class TeamBaselineService:
         """
         team = self.team_repo.get_by_id(team_id)
         if not team:
+            logger.warning(f"Team baseline generation failed: Team {team_id} not found")
             raise ValueError(f"Team {team_id} not found")
 
         # Get all team member user IDs
         member_ids = self.member_repo.get_team_member_ids(team_id)
 
+        # Phase 9.1: Strict minimum team size enforcement for privacy
         if len(member_ids) < self.MIN_TEAM_SIZE_FOR_AGGREGATION:
+            logger.warning(
+                f"Team baseline generation blocked for team {team_id}: "
+                f"Only {len(member_ids)} member(s), minimum {self.MIN_TEAM_SIZE_FOR_AGGREGATION} required for privacy"
+            )
             raise ValueError(
-                f"Team must have at least {self.MIN_TEAM_SIZE_FOR_AGGREGATION} members for aggregation"
+                f"Team must have at least {self.MIN_TEAM_SIZE_FOR_AGGREGATION} members for aggregation. "
+                f"This protects individual privacy by preventing reverse-engineering of scores."
             )
 
         # Aggregate RASNA scores across all team members
         aggregated_averages = self._aggregate_team_rasna_scores(member_ids)
 
+        # Phase 9.1: Fail gracefully if no data available
         if not aggregated_averages or all(v == 0.0 for v in aggregated_averages.values()):
+            logger.warning(
+                f"Team baseline generation failed for team {team_id}: "
+                f"No completed evaluations found for {len(member_ids)} member(s)"
+            )
             raise ValueError("No completed evaluations found for team members")
 
         # Create snapshot

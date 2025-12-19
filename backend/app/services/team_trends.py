@@ -44,6 +44,8 @@ class TeamTrendService:
 
         Requires at least 2 snapshots. Returns None if insufficient data.
 
+        Phase 9.1: Strict minimum snapshot enforcement with clear logging.
+
         Args:
             team_id: ID of the team
 
@@ -53,8 +55,12 @@ class TeamTrendService:
         # Fetch latest 2 snapshots
         snapshots = self.snapshot_repo.get_latest_snapshots(team_id, limit=2)
 
-        # Require at least 2 snapshots for comparison
+        # Phase 9.1: Require at least 2 snapshots for comparison
         if len(snapshots) < 2:
+            logger.info(
+                f"Team trend analysis unavailable for team {team_id}: "
+                f"Only {len(snapshots)} snapshot(s), minimum 2 required for trend analysis"
+            )
             return None
 
         # Latest snapshot is first (ordered desc)
