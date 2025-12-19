@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import calls, auth, baseline
+from app.api.v1.endpoints import calls, auth, baseline, teams
 
 api_router = APIRouter()
 
@@ -20,4 +20,11 @@ api_router.include_router(
     baseline.router,
     prefix="/baseline",
     tags=["baseline"]
+)
+
+# Phase 9: Team/agency intelligence endpoints
+api_router.include_router(
+    teams.router,
+    prefix="/teams",
+    tags=["teams"]
 )

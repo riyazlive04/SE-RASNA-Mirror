@@ -197,7 +197,7 @@ export async function getBaseline(): Promise<Baseline | null> {
 }
 
 // Phase 8.2: Baseline trends API
-import type { BaselineTrend } from "./types";
+import type { BaselineTrend, Team, TeamMember, TeamBaseline, TeamTrend } from "./types";
 
 export async function getBaselineTrends(): Promise<BaselineTrend | null> {
   const response = await fetch(`${API_BASE_URL}/baseline/trends`, {
@@ -212,6 +212,120 @@ export async function getBaselineTrends(): Promise<BaselineTrend | null> {
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || "Failed to fetch baseline trends");
+  }
+
+  return response.json();
+}
+
+// Phase 9: Team/agency intelligence API
+export async function createTeam(name: string): Promise<Team> {
+  const response = await fetch(`${API_BASE_URL}/teams/`, {
+    method: "POST",
+    headers: {
+      ...getAuthHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to create team");
+  }
+
+  return response.json();
+}
+
+export async function getUserTeams(): Promise<Team[]> {
+  const response = await fetch(`${API_BASE_URL}/teams/`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch teams");
+  }
+
+  const data = await response.json();
+  return data.teams || [];
+}
+
+export async function addTeamMember(teamId: number, userId: number, role: "manager" | "member"): Promise<TeamMember> {
+  const response = await fetch(`${API_BASE_URL}/teams/${teamId}/members`, {
+    method: "POST",
+    headers: {
+      ...getAuthHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ user_id: userId, role }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to add team member");
+  }
+
+  return response.json();
+}
+
+export async function getTeamMembers(teamId: number): Promise<TeamMember[]> {
+  const response = await fetch(`${API_BASE_URL}/teams/${teamId}/members`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch team members");
+  }
+
+  const data = await response.json();
+  return data.members || [];
+}
+
+export async function generateTeamBaseline(teamId: number): Promise<TeamBaseline> {
+  const response = await fetch(`${API_BASE_URL}/teams/${teamId}/baseline/generate`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to generate team baseline");
+  }
+
+  return response.json();
+}
+
+export async function getTeamBaseline(teamId: number): Promise<TeamBaseline | null> {
+  const response = await fetch(`${API_BASE_URL}/teams/${teamId}/baseline`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (response.status === 404) {
+    return null; // No team baseline exists yet
+  }
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch team baseline");
+  }
+
+  return response.json();
+}
+
+export async function getTeamTrends(teamId: number): Promise<TeamTrend | null> {
+  const response = await fetch(`${API_BASE_URL}/teams/${teamId}/trends`, {
+    headers: getAuthHeaders(),
+  });
+
+  // Phase 9: 204 No Content = insufficient team snapshots for trends
+  if (response.status === 204) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch team trends");
   }
 
   return response.json();

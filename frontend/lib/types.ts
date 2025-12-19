@@ -104,3 +104,42 @@ export interface BaselineTrend {
   latest_call_count: number;
   previous_call_count: number;
 }
+
+// Phase 9: Team/agency intelligence
+export type TeamRole = "owner" | "manager" | "member";
+
+export interface Team {
+  id: number;
+  name: string;
+  created_by: number;
+  created_at: string;
+  role: TeamRole;  // Current user's role in this team
+}
+
+export interface TeamMember {
+  user_id: number;
+  name: string;
+  email: string;
+  role: TeamRole;
+  joined_at: string;
+}
+
+export interface TeamBaseline {
+  team_id: number;
+  aggregated_rasna_averages: Record<string, number>;  // NO individual scores
+  agent_count: number;
+  snapshot_created_at: string;
+}
+
+export interface TeamTrend {
+  improved_dimensions: string[];
+  declined_dimensions: string[];
+  stable_dimensions: string[];
+  dimension_deltas: Record<string, number>;
+  summary: string;
+  snapshots_compared: number;
+  latest_snapshot_date: string;
+  previous_snapshot_date: string;
+  latest_agent_count: number;
+  previous_agent_count: number;
+}
