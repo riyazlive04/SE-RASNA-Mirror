@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { use } from "react";
 import { useRouter } from "next/navigation";
-import { getCall, transcribeCall, evaluateCall, markAsBaseline, unmarkAsBaseline } from "@/lib/api";
-import type { Call } from "@/lib/types";
+import { getCall, transcribeCall, evaluateCall, markAsBaseline, unmarkAsBaseline, getBaseline } from "@/lib/api";
+import type { Call, Baseline } from "@/lib/types";
 import { useAuth } from "@/lib/auth-context";
 
 export default function CallAnalysisPage({
@@ -21,6 +21,8 @@ export default function CallAnalysisPage({
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isTogglingBaseline, setIsTogglingBaseline] = useState(false);
+  // Phase 8.2: Baseline staleness tracking
+  const [baseline, setBaseline] = useState<Baseline | null>(null);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -44,8 +46,20 @@ export default function CallAnalysisPage({
   useEffect(() => {
     if (isAuthenticated) {
       fetchCall();
+      fetchBaselineData();
     }
   }, [id, isAuthenticated]);
+
+  // Phase 8.2: Fetch baseline data for staleness check
+  const fetchBaselineData = async () => {
+    try {
+      const baselineData = await getBaseline();
+      setBaseline(baselineData);
+    } catch (err) {
+      // Silently fail - baseline is optional
+      console.error("Failed to fetch baseline:", err);
+    }
+  };
 
   const handleTranscribe = async () => {
     if (!call) return;
@@ -285,6 +299,12 @@ export default function CallAnalysisPage({
                 <h2 className="text-lg font-medium text-gray-900 mb-4">
                   Compared to Your Best Calls
                 </h2>
+                {/* Phase 8.2: Staleness hint when baseline is stale */}
+                {baseline && baseline.is_stale && (
+                  <div className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    ℹ️ This comparison is against an older baseline.
+                  </div>
+                )}
                 <p className="text-sm text-gray-700 mb-4">
                   {call.evaluation.comparison_to_baseline.summary}
                 </p>

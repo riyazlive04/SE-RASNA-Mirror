@@ -195,3 +195,24 @@ export async function getBaseline(): Promise<Baseline | null> {
 
   return response.json();
 }
+
+// Phase 8.2: Baseline trends API
+import type { BaselineTrend } from "./types";
+
+export async function getBaselineTrends(): Promise<BaselineTrend | null> {
+  const response = await fetch(`${API_BASE_URL}/baseline/trends`, {
+    headers: getAuthHeaders(),
+  });
+
+  // Phase 8.2: 204 No Content = insufficient data for trends (graceful)
+  if (response.status === 204) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch baseline trends");
+  }
+
+  return response.json();
+}
