@@ -36,7 +36,12 @@ export default function CallAnalysisPage({
       const data = await getCall(id);
       setCall(data);
       setError(null);
-    } catch (err) {
+    } catch (err: any) {
+      // Handle auth required - redirect to login
+      if (err.message === "AUTH_REQUIRED") {
+        router.push("/login");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load call");
     } finally {
       setIsLoading(false);
@@ -55,7 +60,12 @@ export default function CallAnalysisPage({
     try {
       const baselineData = await getBaseline();
       setBaseline(baselineData);
-    } catch (err) {
+    } catch (err: any) {
+      // Handle auth required - redirect to login
+      if (err.message === "AUTH_REQUIRED") {
+        router.push("/login");
+        return;
+      }
       // Silently fail - baseline is optional
       console.error("Failed to fetch baseline:", err);
     }
@@ -69,7 +79,12 @@ export default function CallAnalysisPage({
     try {
       await transcribeCall(id);
       await fetchCall();
-    } catch (err) {
+    } catch (err: any) {
+      // Handle auth required - redirect to login
+      if (err.message === "AUTH_REQUIRED") {
+        router.push("/login");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Transcription failed");
     } finally {
       setIsTranscribing(false);
@@ -84,7 +99,12 @@ export default function CallAnalysisPage({
     try {
       await evaluateCall(id);
       await fetchCall();
-    } catch (err) {
+    } catch (err: any) {
+      // Handle auth required - redirect to login
+      if (err.message === "AUTH_REQUIRED") {
+        router.push("/login");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Evaluation failed");
     } finally {
       setIsEvaluating(false);
@@ -103,7 +123,12 @@ export default function CallAnalysisPage({
         await markAsBaseline(id);
       }
       await fetchCall();
-    } catch (err) {
+    } catch (err: any) {
+      // Handle auth required - redirect to login
+      if (err.message === "AUTH_REQUIRED") {
+        router.push("/login");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to toggle baseline");
     } finally {
       setIsTogglingBaseline(false);

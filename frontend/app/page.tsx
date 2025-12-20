@@ -53,7 +53,12 @@ export default function UploadPage() {
         const trendsData = await getBaselineTrends();
         setTrends(trendsData);
       }
-    } catch (err) {
+    } catch (err: any) {
+      // Handle auth required - redirect to login
+      if (err.message === "AUTH_REQUIRED") {
+        router.push("/login");
+        return;
+      }
       // Silently fail - baseline is optional
       console.error("Failed to fetch baseline data:", err);
     }
@@ -65,7 +70,12 @@ export default function UploadPage() {
     try {
       await generateBaseline();
       await fetchBaselineData();
-    } catch (err) {
+    } catch (err: any) {
+      // Handle auth required - redirect to login
+      if (err.message === "AUTH_REQUIRED") {
+        router.push("/login");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to regenerate baseline");
     } finally {
       setIsRegenerating(false);
@@ -111,7 +121,12 @@ export default function UploadPage() {
       });
 
       router.push(`/calls/${call.id}`);
-    } catch (err) {
+    } catch (err: any) {
+      // Handle auth required - redirect to login
+      if (err.message === "AUTH_REQUIRED") {
+        router.push("/login");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Upload failed");
       setIsLoading(false);
     }

@@ -2,23 +2,50 @@ import type { Call, UploadCallData, Baseline } from "./types";
 
 const API_BASE_URL = "http://localhost:8000/api/v1";
 
-// Helper to get auth headers from localStorage
-// SSR-safe: Returns empty object during server-side rendering
-function getAuthHeaders(): HeadersInit {
-  // SSR guard: localStorage only exists client-side
+/**
+ * Strict auth guard - ensures token exists before making protected API calls.
+ *
+ * Why this exists:
+ * - Prevents silent 401 errors by failing fast on the client
+ * - Never sends unauthenticated requests to protected endpoints
+ * - Allows UI to redirect to login immediately
+ *
+ * Throws "AUTH_REQUIRED" if:
+ * - Called during SSR (window is undefined)
+ * - No token found in localStorage
+ *
+ * @returns {string} Valid access token
+ * @throws {Error} AUTH_REQUIRED if no token available
+ */
+function requireAuthToken(): string {
   if (typeof window === "undefined") {
-    return {};
+    throw new Error("AUTH_REQUIRED");
   }
 
   const token = localStorage.getItem("access_token");
 
+  if (!token) {
+    throw new Error("AUTH_REQUIRED");
+  }
+
+  return token;
+}
+
+/**
+ * Get authorization headers for protected API calls.
+ *
+ * IMPORTANT: This now throws if no token exists (fail-fast design).
+ * UI components must handle AUTH_REQUIRED errors and redirect to login.
+ *
+ * @returns {HeadersInit} Headers with Authorization: Bearer <token>
+ * @throws {Error} AUTH_REQUIRED if no token available
+ */
+function getAuthHeaders(): HeadersInit {
+  const token = requireAuthToken();
+
   // Defensive logging (development only)
   if (process.env.NODE_ENV === "development") {
     console.debug("[AUTH] Token present:", !!token);
-  }
-
-  if (!token) {
-    return {};
   }
 
   return {
