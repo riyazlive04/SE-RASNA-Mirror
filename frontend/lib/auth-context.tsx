@@ -28,7 +28,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Load auth state from localStorage on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem("auth_token");
+    // SSR guard: localStorage only exists client-side
+    if (typeof window === "undefined") {
+      setIsLoading(false);
+      return;
+    }
+
+    const storedToken = localStorage.getItem("access_token");
     const storedUser = localStorage.getItem("auth_user");
 
     if (storedToken && storedUser) {
@@ -37,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(JSON.parse(storedUser));
       } catch (error) {
         // Clear invalid data
-        localStorage.removeItem("auth_token");
+        localStorage.removeItem("access_token");
         localStorage.removeItem("auth_user");
       }
     }
@@ -46,16 +52,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = (newToken: string, newUser: User) => {
+    // SSR guard: Only store client-side
+    if (typeof window === "undefined") return;
+
     setToken(newToken);
     setUser(newUser);
-    localStorage.setItem("auth_token", newToken);
+    localStorage.setItem("access_token", newToken);
     localStorage.setItem("auth_user", JSON.stringify(newUser));
   };
 
   const logout = () => {
+    // SSR guard: Only clear client-side
+    if (typeof window === "undefined") return;
+
     setToken(null);
     setUser(null);
-    localStorage.removeItem("auth_token");
+    localStorage.removeItem("access_token");
     localStorage.removeItem("auth_user");
   };
 

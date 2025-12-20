@@ -3,11 +3,24 @@ import type { Call, UploadCallData, Baseline } from "./types";
 const API_BASE_URL = "http://localhost:8000/api/v1";
 
 // Helper to get auth headers from localStorage
+// SSR-safe: Returns empty object during server-side rendering
 function getAuthHeaders(): HeadersInit {
-  const token = localStorage.getItem("auth_token");
-  if (!token) {
-    throw new Error("Not authenticated");
+  // SSR guard: localStorage only exists client-side
+  if (typeof window === "undefined") {
+    return {};
   }
+
+  const token = localStorage.getItem("access_token");
+
+  // Defensive logging (development only)
+  if (process.env.NODE_ENV === "development") {
+    console.debug("[AUTH] Token present:", !!token);
+  }
+
+  if (!token) {
+    return {};
+  }
+
   return {
     Authorization: `Bearer ${token}`,
   };
